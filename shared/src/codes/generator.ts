@@ -1,4 +1,4 @@
-import { WORDS } from './wordlist.js';
+import { WORDS } from "./wordlist.js";
 
 // 3-word codes give us WORDS^3 possibilities. With ~100 words = 1M;
 // with full EFF list = 470B. Server still checks for collisions on insert.
@@ -16,9 +16,9 @@ export function isValidCodeFormat(code: string): boolean {
 export function normalizeRoomCode(input: string): string | null {
   const tokens = input
     .toLowerCase()
-    .split(/[^a-z]+/)   // split on anything that isn't a letter
-    .filter(Boolean);   // drop empty strings from leading/trailing separators
+    .split(/[^a-z]+/) // split on anything that isn't a letter
+    .filter(Boolean); // drop empty strings from leading/trailing separators
 
   if (tokens.length !== 3) return null;
-  return tokens.join('-');
+  return tokens.join("-");
 }

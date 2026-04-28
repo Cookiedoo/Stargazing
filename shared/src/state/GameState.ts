@@ -1,4 +1,4 @@
-import { Ship } from './Ship.js';
+import { Ship } from "./Ship.js";
 
 export class GameState {
   // playerId -> Ship
@@ -10,7 +10,10 @@ export class GameState {
     // TODO: spawn at a random uncontested location, not origin.
     const angle = Math.random() * Math.PI * 2;
     const radius = 5 + Math.random() * 10;
-    this.ships.set(id, new Ship(Math.cos(angle) * radius, Math.sin(angle) * radius));
+    this.ships.set(
+      id,
+      new Ship(Math.cos(angle) * radius, Math.sin(angle) * radius),
+    );
   }
 
   removePlayer(id: string): void {

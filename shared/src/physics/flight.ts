@@ -1,9 +1,8 @@
-import { Ship, ShipInput } from '../state/Ship.js';
+import { Ship, ShipInput } from "../state/Ship.js";
 
-const THRUST_FORCE = 30;     // units/sec^2 of acceleration
-const STRAFE_FORCE = 25;
-const LINEAR_DAMPING = 0.92; // velocity multiplier per second of drift
-const TURN_RATE = 2.5;       // radians/sec of yaw from strafe
+const THRUST_FORCE = 30;
+const LINEAR_DAMPING = 0.92;
+const TURN_RATE = 2.5;
 
 export function stepShip(ship: Ship, input: ShipInput, dt: number): void {
   ship.yaw += input.strafe * TURN_RATE * dt;
