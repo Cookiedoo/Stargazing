@@ -30,7 +30,7 @@ export class LobbyScreen implements Screen {
         <input id="msg-input" placeholder="say something" />
         <button id="btn-send">Send</button>
       </div>
-      <button id="btn-start" style="margin-top:1rem;">Start Match (solo test)</button>
+      <button id="btn-start" style="margin-top:1rem;">Start Match</button>
     `;
     root.appendChild(wrap);
     this.logEl = wrap.querySelector("#log") as HTMLDivElement;
@@ -46,7 +46,6 @@ export class LobbyScreen implements Screen {
 
     this.socket.onMessage((msg) => this.handleMessage(msg));
 
-    // --- Send button + Enter key for chat ---
     const input = wrap.querySelector("#msg-input") as HTMLInputElement;
     const sendIt = () => {
       const text = input.value.trim();

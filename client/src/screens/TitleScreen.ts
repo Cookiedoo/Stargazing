@@ -16,7 +16,7 @@ export class TitleScreen implements Screen {
     wrap.className = "screen";
     wrap.innerHTML = `
       <h1>STARGAZE</h1>
-      <p>Sprint 1 — plumbing test</p>
+      <p>Capture Your Horizon</p>
       <button id="btn-create">Create Game</button>
       <div style="display:flex; gap:0.5rem;">
         <input id="code-input" placeholder="three words" autocapitalize="off" autocomplete="off" spellcheck="false" />
