@@ -1,6 +1,6 @@
-import { defineConfig } from "vite";
+import { defineConfig } from 'vite';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/stargazing/' : '/',
   server: { port: 5173 },
-  base: process.env.NODE_ENV === "production" ? "/stargazing/" : "/",
-});
+}));
