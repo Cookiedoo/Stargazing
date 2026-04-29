@@ -1,8 +1,8 @@
-import { MSG, PROTOCOL_VERSION } from '@stargazing/shared';
-import type { ClientMessage, ServerMessage } from '@stargazing/shared';
-import type { DurableObjectState } from '@cloudflare/workers-types';
-import type { Env } from '../types.js';
-import { Simulation, TICK_DT } from '../sim/Simulation.js';
+import { MSG, PROTOCOL_VERSION } from "@stargazing/shared";
+import type { ClientMessage, ServerMessage } from "@stargazing/shared";
+import type { DurableObjectState } from "@cloudflare/workers-types";
+import type { Env } from "../types.js";
+import { Simulation, TICK_DT } from "../sim/Simulation.js";
 
 interface PlayerConnection {
   id: string;
@@ -10,11 +10,11 @@ interface PlayerConnection {
 }
 
 const SNAPSHOT_RATE_HZ = 20;
-const TICKS_PER_SNAPSHOT = Math.round((1 / SNAPSHOT_RATE_HZ) / TICK_DT);
+const TICKS_PER_SNAPSHOT = Math.round(1 / SNAPSHOT_RATE_HZ / TICK_DT);
 
 export class GameRoom {
   private state: DurableObjectState;
-  private code: string = '';
+  private code: string = "";
   private players = new Map<string, PlayerConnection>();
   private sim = new Simulation();
 
@@ -26,7 +26,7 @@ export class GameRoom {
   constructor(state: DurableObjectState, _env: Env) {
     this.state = state;
     this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.get<string>('code');
+      const stored = await this.state.storage.get<string>("code");
       if (stored) this.code = stored;
     });
   }
@@ -34,18 +34,18 @@ export class GameRoom {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === '/init' && request.method === 'POST') {
+    if (url.pathname === "/init" && request.method === "POST") {
       const body = await request.json<{ code: string }>();
       this.code = body.code;
-      await this.state.storage.put('code', body.code);
-      return new Response('ok');
+      await this.state.storage.put("code", body.code);
+      return new Response("ok");
     }
 
-    if (request.headers.get('Upgrade') === 'websocket') {
+    if (request.headers.get("Upgrade") === "websocket") {
       return this.handleJoin(request);
     }
 
-    return new Response('Not found', { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
 
   private handleJoin(_request: Request): Response {
@@ -71,18 +71,18 @@ export class GameRoom {
       playerId,
     );
 
-    server.addEventListener('message', (event) => {
+    server.addEventListener("message", (event) => {
       this.onMessage(playerId, event.data);
     });
 
-    server.addEventListener('close', () => {
+    server.addEventListener("close", () => {
       this.players.delete(playerId);
       this.sim.removePlayer(playerId);
       this.broadcast({ type: MSG.PLAYER_LEFT, payload: { id: playerId } });
       if (this.players.size === 0) this.stopTick();
     });
 
-    server.addEventListener('error', () => {
+    server.addEventListener("error", () => {
       this.players.delete(playerId);
       this.sim.removePlayer(playerId);
       if (this.players.size === 0) this.stopTick();
@@ -124,7 +124,9 @@ export class GameRoom {
   private onMessage(fromId: string, raw: ArrayBuffer | string): void {
     let msg: ClientMessage;
     try {
-      msg = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));
+      msg = JSON.parse(
+        typeof raw === "string" ? raw : new TextDecoder().decode(raw),
+      );
     } catch {
       return;
     }
@@ -137,10 +139,11 @@ export class GameRoom {
         });
         break;
       case MSG.INPUT:
-        this.sim.receiveInput(fromId, {
-          thrust: msg.payload.thrust,
-          strafe: msg.payload.strafe,
-        });
+        this.sim.receiveInput(
+          fromId,
+          { thrust: msg.payload.thrust, strafe: msg.payload.strafe },
+          msg.payload.clientTick, // NEW
+        );
         break;
       default:
         break;

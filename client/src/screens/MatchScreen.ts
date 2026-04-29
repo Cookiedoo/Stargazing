@@ -1,15 +1,16 @@
-import type { Screen, ScreenManager } from "./ScreenManager.js";
-import { Renderer } from "../engine/renderer.js";
-import { GameLoop } from "../engine/loop.js";
-import { detectPlatform } from "../engine/platform.js";
-import { StarfieldView } from "../render/StarfieldView.js";
-import { ShipView } from "../render/ShipView.js";
-import { DesktopControls } from "../input/DesktopControls.js";
-import { MessageRouter } from "../net/MessageRouter.js";
-import type { SocketClient } from "../net/SocketClient.js";
-import { MSG } from "@stargazing/shared";
-import type { ShipSnapshotWire } from "@stargazing/shared";
-import { ChaseCamera } from "../engine/ChaseCamera.js";
+import type { Screen, ScreenManager } from './ScreenManager.js';
+import { Renderer } from '../engine/renderer.js';
+import { GameLoop } from '../engine/loop.js';
+import { detectPlatform } from '../engine/platform.js';
+import { StarfieldView } from '../render/StarfieldView.js';
+import { ShipView } from '../render/ShipView.js';
+import { DesktopControls } from '../input/DesktopControls.js';
+import { MessageRouter } from '../net/MessageRouter.js';
+import type { SocketClient } from '../net/SocketClient.js';
+import { MSG } from '@stargazing/shared';
+import { ChaseCamera } from '../engine/ChaseCamera.js';
+import { Prediction } from '../net/Prediction.js';
+import { Interpolation } from '../net/Interpolation.js';
 
 export class MatchScreen implements Screen {
   // @ts-expect-error reserved
@@ -22,16 +23,20 @@ export class MatchScreen implements Screen {
   private controls: DesktopControls;
   private router = new MessageRouter();
 
-  // ShipView per playerId. Created on first snapshot, destroyed when ship leaves.
+  // Visual ship views, one per playerId (including ours).
   private ships = new Map<string, ShipView>();
-  private myId: string = "";
-  private clientTick = 0;
 
+  // Local player state.
+  private myId: string = '';
+  private prediction = new Prediction();
   private chaseCamera: ChaseCamera | null = null;
-  private myShipState: ShipSnapshotWire | null = null;
   private hasSnappedCamera: boolean = false;
 
-  // Throttle input sends to ~30Hz instead of every render frame.
+  // Remote players: one Interpolation buffer each.
+  private remotes = new Map<string, Interpolation>();
+
+  // Input throttle.
+  private clientTick = 0;
   private lastInputSend = 0;
   private readonly INPUT_SEND_INTERVAL = 1 / 30;
 
@@ -42,21 +47,21 @@ export class MatchScreen implements Screen {
   }
 
   enter(root: HTMLElement): void {
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "position:relative; width:100%; height:100%;";
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative; width:100%; height:100%;';
     root.appendChild(wrap);
 
-    const hud = document.createElement("div");
+    const hud = document.createElement('div');
     hud.style.cssText =
-      "position:absolute; top:0; left:0; padding:1rem; " +
-      "pointer-events:none; color:#e8ecf4; font-family:monospace; font-size:0.9em;";
+      'position:absolute; top:0; left:0; padding:1rem; ' +
+      'pointer-events:none; color:#e8ecf4; font-family:monospace; font-size:0.9em;';
     hud.innerHTML = `
-      <div>Sprint 2.5 — networked simulation</div>
+      <div>Sprint 3 — netcode smoothing</div>
       <div style="opacity:0.6;">WASD or arrows to move</div>
       <div style="opacity:0.6;" id="hud-info"></div>
     `;
     wrap.appendChild(hud);
-    const info = hud.querySelector("#hud-info") as HTMLDivElement;
+    const info = hud.querySelector('#hud-info') as HTMLDivElement;
 
     const platform = detectPlatform();
     this.renderer = new Renderer(wrap, platform);
@@ -66,36 +71,44 @@ export class MatchScreen implements Screen {
     this.chaseCamera.setOffset(0, 6, 22);
     this.chaseCamera.setSmoothing(0.08, 0.18);
 
-    // The socket already received WELCOME during lobby — we don't get it again.
-    // We need to ask the lobby for our ID. For Sprint 2.5, simplest fix:
-    // re-derive it from the first snapshot. We'll know it's us when the
-    // server tags it. Actually we need to pass myId in. Let's do it cleanly:
-    // pass it in via the constructor next sprint. For now, we listen for
-    // the next welcome, OR fall back: the Lobby socket already knows.
-    // Simplest: have LobbyScreen pass myId. (See LobbyScreen tweak below.)
-
-    // Wire message handling
+    // Snapshot handler: route each ship to either prediction (self) or interpolation (remotes).
     this.router.on(MSG.SNAPSHOT, (payload) => {
+      const now = performance.now();
       const presentIds = new Set<string>();
+
       for (const shipSnap of payload.ships) {
         presentIds.add(shipSnap.id);
-        let view = this.ships.get(shipSnap.id);
-        if (!view) {
-          view = new ShipView(this.renderer!.scene, shipSnap.id === this.myId);
-          this.ships.set(shipSnap.id, view);
+
+        // Ensure a ShipView exists for visual rendering.
+        if (!this.ships.has(shipSnap.id)) {
+          const isMine = shipSnap.id === this.myId;
+          const color = isMine ? 0x60ff90 : 0x6080ff;
+          this.ships.set(shipSnap.id, new ShipView(this.renderer!.scene, color));
         }
-        view.applySnapshot(shipSnap);
+
         if (shipSnap.id === this.myId) {
-          this.myShipState = shipSnap;
+          // Reconcile our predicted state with server truth.
+          this.prediction.applyServerSnapshot(shipSnap);
+        } else {
+          // Buffer for interpolation.
+          let interp = this.remotes.get(shipSnap.id);
+          if (!interp) {
+            interp = new Interpolation();
+            this.remotes.set(shipSnap.id, interp);
+          }
+          interp.push(shipSnap, now);
         }
       }
-      // Remove views for ships that left.
+
+      // Remove ships that left.
       for (const [id, view] of this.ships) {
         if (!presentIds.has(id)) {
           view.dispose();
           this.ships.delete(id);
+          this.remotes.delete(id);
         }
       }
+
       info.textContent = `tick ${payload.tick} · ${payload.ships.length} ship(s)`;
     });
 
@@ -106,25 +119,54 @@ export class MatchScreen implements Screen {
     this.loop.add((dt, elapsed) => {
       this.starfield?.update(dt, elapsed);
 
+      const currentInput = {
+        thrust: this.controls.thrust,
+        strafe: this.controls.strafe,
+      };
+
       if (elapsed - this.lastInputSend >= this.INPUT_SEND_INTERVAL) {
         this.lastInputSend = elapsed;
         this.clientTick++;
         this.socket.send({
           type: MSG.INPUT,
-          payload: {
-            thrust: this.controls.thrust,
-            strafe: this.controls.strafe,
-            clientTick: this.clientTick,
-          },
+          payload: { ...currentInput, clientTick: this.clientTick },
         });
       }
 
-      if (this.chaseCamera && this.myShipState) {
-        if (!this.hasSnappedCamera) {
-          this.chaseCamera.snapTo(this.myShipState);
+      this.prediction.applyInput(this.clientTick, currentInput, dt);
+
+      this.prediction.update(dt);
+
+      const myView = this.ships.get(this.myId);
+      if (myView) {
+        myView.applySnapshot({
+          x: this.prediction.renderX,
+          y: this.prediction.renderY,
+          z: this.prediction.renderZ,
+          yaw: this.prediction.renderYaw,
+        });
+      }
+
+      const now = performance.now();
+      for (const [id, interp] of this.remotes) {
+        const sample = interp.sample(now);
+        if (!sample) continue;
+        const view = this.ships.get(id);
+        if (view) view.applySnapshot(sample);
+      }
+
+      if (this.chaseCamera) {
+        const target = {
+          x: this.prediction.renderX,
+          y: this.prediction.renderY,
+          z: this.prediction.renderZ,
+          yaw: this.prediction.renderYaw,
+        };
+        if (!this.hasSnappedCamera && this.ships.has(this.myId)) {
+          this.chaseCamera.snapTo(target);
           this.hasSnappedCamera = true;
-        } else {
-          this.chaseCamera.update(dt, this.myShipState);
+        } else if (this.hasSnappedCamera) {
+          this.chaseCamera.update(dt, target);
         }
       }
 
@@ -142,13 +184,13 @@ export class MatchScreen implements Screen {
     this.controls.detach();
     for (const view of this.ships.values()) view.dispose();
     this.ships.clear();
+    this.remotes.clear();
     this.starfield?.dispose();
     this.renderer?.dispose();
     this.loop = null;
     this.starfield = null;
     this.renderer = null;
     this.chaseCamera = null;
-    this.myShipState = null;
     this.hasSnappedCamera = false;
   }
 }

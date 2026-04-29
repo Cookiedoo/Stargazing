@@ -25,7 +25,6 @@ export type InputMessage = Envelope<
   }
 >;
 
-// Server broadcasts the world state at ~20Hz.
 export interface ShipSnapshotWire {
   id: string;
   x: number;
@@ -35,6 +34,7 @@ export interface ShipSnapshotWire {
   vy: number;
   vz: number;
   yaw: number;
+  lastInputTick: number;
 }
 export type SnapshotMessage = Envelope<
   "snapshot",

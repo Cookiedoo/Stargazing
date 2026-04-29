@@ -1,27 +1,15 @@
-import {
-  BoxGeometry,
-  Mesh,
-  MeshStandardMaterial,
-  Scene,
-  Color,
-} from 'three';
-
-// One ShipView per ship in the game. Driven entirely by snapshots.
-// In Sprint 3 we'll add interpolation so movement is smooth between snapshots.
-// For Sprint 2.5: we just snap to the latest position. It will look stuttery.
-// That's intentional — feeling the unfiltered network is a great teacher.
+import { BoxGeometry, Mesh, MeshStandardMaterial, Scene, Color } from 'three';
 
 export class ShipView {
   private mesh: Mesh;
   private scene: Scene;
 
-  constructor(scene: Scene, isLocal: boolean) {
+  constructor(scene: Scene, color: number = 0x6080ff) {
     this.scene = scene;
     const geom = new BoxGeometry(2, 1, 3);
     const mat = new MeshStandardMaterial({
-      // Local player gets a different tint so you can tell which is you.
-      color: isLocal ? new Color(0x60ff90) : new Color(0x6080ff),
-      emissive: isLocal ? new Color(0x153a20) : new Color(0x1a2540),
+      color: new Color(color),
+      emissive: new Color(color).multiplyScalar(0.15),
       emissiveIntensity: 0.5,
       metalness: 0.6,
       roughness: 0.3,

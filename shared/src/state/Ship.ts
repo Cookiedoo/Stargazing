@@ -1,6 +1,3 @@
-// Pure data class. No DOM, no Three.js. Same code runs on client and server.
-// In Sprint 2.5 the client treats this as read-only state from the server.
-// In Sprint 3 the client will also run step() locally for prediction.
 
 export interface ShipInput {
   thrust: number; // -1 to 1 (back to forward)
