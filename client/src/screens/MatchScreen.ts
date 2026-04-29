@@ -100,7 +100,6 @@ export class MatchScreen implements Screen {
         }
       }
 
-      // Remove ships that left.
       for (const [id, view] of this.ships) {
         if (!presentIds.has(id)) {
           view.dispose();
@@ -122,6 +121,8 @@ export class MatchScreen implements Screen {
       const currentInput = {
         thrust: this.controls.thrust,
         strafe: this.controls.strafe,
+        pitch: 0,
+        boost: false,
       };
 
       if (elapsed - this.lastInputSend >= this.INPUT_SEND_INTERVAL) {

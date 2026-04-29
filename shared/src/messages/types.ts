@@ -34,6 +34,8 @@ export interface ShipSnapshotWire {
   vy: number;
   vz: number;
   yaw: number;
+  pitch: number;
+  bank: number; 
   lastInputTick: number;
 }
 export type SnapshotMessage = Envelope<

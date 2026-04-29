@@ -88,7 +88,6 @@ export class GameRoom {
       if (this.players.size === 0) this.stopTick();
     });
 
-    // Start the tick loop on first join.
     this.startTick();
 
     return new Response(null, { status: 101, webSocket: client });
@@ -141,8 +140,13 @@ export class GameRoom {
       case MSG.INPUT:
         this.sim.receiveInput(
           fromId,
-          { thrust: msg.payload.thrust, strafe: msg.payload.strafe },
-          msg.payload.clientTick, // NEW
+          {
+            thrust: msg.payload.thrust,
+            strafe: msg.payload.strafe,
+            pitch: 0,
+            boost: false,
+          },
+          msg.payload.clientTick,
         );
         break;
       default:

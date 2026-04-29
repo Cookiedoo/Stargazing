@@ -1,0 +1,13 @@
+export const SHIP = {
+  THRUST_FORCE: 132,
+  VELOCITY_DAMPING: 0.992,
+  BOOST_MULTIPLIER: 5.0,
+
+  YAW_RATE: 1.4,
+  MAX_PITCH: Math.PI * 0.28, 
+  PITCH_SMOOTH: 2, 
+  BANK_ANGLE_MAX: 0.52, 
+  BANK_SMOOTH: 7, 
+
+  SPAWN_RADIUS: 7500, 
+} as const;

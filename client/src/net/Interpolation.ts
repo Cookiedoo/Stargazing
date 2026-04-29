@@ -63,6 +63,9 @@ function lerpSnap(
     vy: a.vy + (b.vy - a.vy) * t,
     vz: a.vz + (b.vz - a.vz) * t,
     yaw: lerpAngle(a.yaw, b.yaw, t),
+    pitch: lerpAngle(a.pitch, b.pitch, t),
+    bank: lerpAngle(a.bank, b.bank, t),
+
     lastInputTick: b.lastInputTick,
   };
 }

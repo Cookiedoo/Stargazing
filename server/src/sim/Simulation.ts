@@ -14,7 +14,7 @@ export class Simulation {
 
   addPlayer(id: string): void {
     this.state.addPlayer(id);
-    this.latestInputs.set(id, { thrust: 0, strafe: 0 });
+    this.latestInputs.set(id, { thrust: 0, strafe: 0, pitch: 0, boost: false });
     this.lastInputTick.set(id, 0);
   }
 
@@ -28,6 +28,8 @@ export class Simulation {
     this.latestInputs.set(playerId, {
       thrust: Math.max(-1, Math.min(1, input.thrust)),
       strafe: Math.max(-1, Math.min(1, input.strafe)),
+      pitch: Math.max(-1, Math.min(1, input.pitch)),
+      boost: input.boost,
     });
     const prev = this.lastInputTick.get(playerId) ?? 0;
     if (clientTick > prev) this.lastInputTick.set(playerId, clientTick);
@@ -36,7 +38,12 @@ export class Simulation {
   step(): void {
     this.state.tick++;
     for (const [id, ship] of this.state.ships) {
-      const input = this.latestInputs.get(id) ?? { thrust: 0, strafe: 0 };
+      const input = this.latestInputs.get(id) ?? {
+        thrust: 0,
+        strafe: 0,
+        pitch: 0,
+        boost: false,
+      };
       stepShip(ship, input, TICK_DT);
     }
   }
@@ -53,6 +60,8 @@ export class Simulation {
         vy: ship.vy,
         vz: ship.vz,
         yaw: ship.yaw,
+        pitch: ship.pitch,
+        bank: ship.bank,
         lastInputTick: this.lastInputTick.get(id) ?? 0, // NEW
       });
     }

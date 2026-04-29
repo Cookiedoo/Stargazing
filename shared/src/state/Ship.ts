@@ -1,31 +1,26 @@
-
 export interface ShipInput {
   thrust: number; // -1 to 1 (back to forward)
   strafe: number; // -1 to 1 (left to right)
-  // TODO Sprint 3: pitch, yaw, roll, fire, interact
 }
 
 export class Ship {
-  // Position (units = world space, ~1 unit = 1 meter)
   x: number = 0;
   y: number = 0;
   z: number = 0;
 
-  // Velocity per second
   vx: number = 0;
   vy: number = 0;
   vz: number = 0;
 
-  // Yaw only for now — flat disc gameplay. Pitch/roll added Sprint 3.
   yaw: number = 0;
+  pitch: number = 0;
+  bank: number = 0;
 
   constructor(spawnX: number = 0, spawnZ: number = 0) {
     this.x = spawnX;
     this.z = spawnZ;
   }
 
-  // Serialize to the minimum data needed to reproduce visuals.
-  // This is what goes in snapshots over the wire.
   toSnapshot(): ShipSnapshot {
     return {
       x: this.x,
@@ -35,6 +30,8 @@ export class Ship {
       vy: this.vy,
       vz: this.vz,
       yaw: this.yaw,
+      pitch: this.pitch,
+      bank: this.bank,
     };
   }
 
@@ -46,6 +43,8 @@ export class Ship {
     this.vy = snap.vy;
     this.vz = snap.vz;
     this.yaw = snap.yaw;
+    this.pitch = snap.pitch;
+    this.bank = snap.bank;
   }
 }
 
@@ -57,4 +56,13 @@ export interface ShipSnapshot {
   vy: number;
   vz: number;
   yaw: number;
+  pitch: number;
+  bank: number;
+}
+
+export interface ShipInput {
+  thrust: number;   // -1 to 1
+  strafe: number;   // -1 to 1
+  pitch: number;    // NEW: -1 to 1, mouse-Y or pitch keys
+  boost: boolean;   // NEW
 }
