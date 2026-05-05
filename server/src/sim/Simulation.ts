@@ -1,4 +1,7 @@
-import { GameState, Ship, stepShip, type ShipInput } from "@stargazing/shared";
+import {
+  GameState, Ship, stepShip, applyBoundary,
+  type ShipInput,
+} from '@stargazing/shared';
 
 const TICK_RATE_HZ = 30;
 export const TICK_DT = 1 / TICK_RATE_HZ;
@@ -14,7 +17,7 @@ export class Simulation {
 
   addPlayer(id: string): void {
     this.state.addPlayer(id);
-    this.latestInputs.set(id, { thrust: 0, strafe: 0, pitch: 0, boost: false });
+    this.latestInputs.set(id, this.zeroInput());
     this.lastInputTick.set(id, 0);
   }
 
@@ -26,10 +29,11 @@ export class Simulation {
 
   receiveInput(playerId: string, input: ShipInput, clientTick: number): void {
     this.latestInputs.set(playerId, {
-      thrust: Math.max(-1, Math.min(1, input.thrust)),
-      strafe: Math.max(-1, Math.min(1, input.strafe)),
-      pitch: Math.max(-1, Math.min(1, input.pitch)),
-      boost: input.boost,
+      thrust: clamp01(input.thrust),
+      brake: clamp01(input.brake),
+      strafe: clampSym(input.strafe),
+      pitch: clampSym(input.pitch),
+      boost: !!input.boost,
     });
     const prev = this.lastInputTick.get(playerId) ?? 0;
     if (clientTick > prev) this.lastInputTick.set(playerId, clientTick);
@@ -38,13 +42,9 @@ export class Simulation {
   step(): void {
     this.state.tick++;
     for (const [id, ship] of this.state.ships) {
-      const input = this.latestInputs.get(id) ?? {
-        thrust: 0,
-        strafe: 0,
-        pitch: 0,
-        boost: false,
-      };
+      const input = this.latestInputs.get(id) ?? this.zeroInput();
       stepShip(ship, input, TICK_DT);
+      applyBoundary(ship);
     }
   }
 
@@ -53,20 +53,33 @@ export class Simulation {
     for (const [id, ship] of this.state.ships) {
       ships.push({
         id,
-        x: ship.x,
-        y: ship.y,
-        z: ship.z,
-        vx: ship.vx,
-        vy: ship.vy,
-        vz: ship.vz,
-        yaw: ship.yaw,
+        x: ship.x, y: ship.y, z: ship.z,
+        vx: ship.vx, vy: ship.vy, vz: ship.vz,
+        heading: ship.heading,
         pitch: ship.pitch,
         bank: ship.bank,
-        lastInputTick: this.lastInputTick.get(id) ?? 0, // NEW
+        thrustLevel: ship.thrustLevel,
+        lastInputTick: this.lastInputTick.get(id) ?? 0,
       });
     }
     return { tick: this.state.tick, ships };
   }
+
+  private zeroInput(): ShipInput {
+    return { thrust: 0, brake: 0, strafe: 0, pitch: 0, boost: false };
+  }
+}
+
+function clamp01(v: number): number {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+function clampSym(v: number): number {
+  if (v < -1) return -1;
+  if (v > 1) return 1;
+  return v;
 }
 
 void Ship;

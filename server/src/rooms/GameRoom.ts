@@ -18,8 +18,6 @@ export class GameRoom {
   private players = new Map<string, PlayerConnection>();
   private sim = new Simulation();
 
-  // We use setInterval for the tick. In Workers this works inside a DO
-  // for as long as the DO is alive. When all players leave we'll clear it.
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private ticksSinceSnapshot = 0;
 
@@ -142,9 +140,10 @@ export class GameRoom {
           fromId,
           {
             thrust: msg.payload.thrust,
+            brake: msg.payload.brake,
             strafe: msg.payload.strafe,
-            pitch: 0,
-            boost: false,
+            pitch: msg.payload.pitch,
+            boost: msg.payload.boost,
           },
           msg.payload.clientTick,
         );

@@ -1,31 +1,260 @@
-import { BoxGeometry, Mesh, MeshStandardMaterial, Scene, Color } from 'three';
+import {
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  Color,
+  Scene,
+  Vector3,
+  Quaternion,
+  Euler,
+  Sphere,
+  BufferGeometry,
+  BufferAttribute,
+  Points,
+  PointsMaterial,
+  CanvasTexture,
+  NearestFilter,
+  AdditiveBlending,
+} from "three";
+import { assets } from "../engine/assetLoader.js";
+import { SHIP } from "@stargazing/shared";
+import { DEBUG } from '@stargazing/shared';
+
+
+const EXHAUST_PALETTE = [
+  0x2b0000, 0x5a0000, 0x8b0000, 0xb30000, 0xcc0000, 0xff0000, 0xff3300,
+  0xff6600, 0xff9900, 0xffcc00, 0xffff00,
+];
+
+interface Particle {
+  position: Vector3;
+  velocity: Vector3;
+  life: number;
+  maxLife: number;
+}
 
 export class ShipView {
-  private mesh: Mesh;
   private scene: Scene;
+  private color: number;
+
+  private currentVx: number = 0;
+  private currentVy: number = 0;
+  private currentVz: number = 0;
+
+  private root: Group;
+  private orientGroup: Group;
+  private model: Group | null = null;
+
+  private exhaust: Points | null = null;
+  private particles: Particle[] = [];
+
+  private currentThrustLevel: number = 0;
+
+  private _quat: Quaternion = new Quaternion();
+  private _euler: Euler = new Euler();
+  
 
   constructor(scene: Scene, color: number = 0x6080ff) {
     this.scene = scene;
-    const geom = new BoxGeometry(2, 1, 3);
-    const mat = new MeshStandardMaterial({
-      color: new Color(color),
-      emissive: new Color(color).multiplyScalar(0.15),
-      emissiveIntensity: 0.5,
-      metalness: 0.6,
-      roughness: 0.3,
-    });
-    this.mesh = new Mesh(geom, mat);
-    this.scene.add(this.mesh);
+    this.color = color;
+
+    this.root = new Group();
+    this.orientGroup = new Group();
+    this.orientGroup.rotation.x = -Math.PI / 2;
+    this.orientGroup.rotation.y = Math.PI;
+    this.root.add(this.orientGroup);
+    this.root.scale.setScalar(3);
+    this.scene.add(this.root);
+
+    this.loadModel();
+    this.initExhaust();
   }
 
-  applySnapshot(snap: { x: number; y: number; z: number; yaw: number }): void {
-    this.mesh.position.set(snap.x, snap.y, snap.z);
-    this.mesh.rotation.y = snap.yaw;
+  private async loadModel(): Promise<void> {
+    try {
+      this.model = await assets.loadGLB("/RocketFLY.glb");
+      this.tintModel(this.model, this.color);
+      this.orientGroup.add(this.model);
+    } catch (err) {
+      console.error("ShipView: failed to load /RocketFLY.glb", err);
+    }
+  }
+
+private tintModel(root: Group, color: number): void {
+  const c = new Color(color);
+  root.traverse((obj) => {
+    if (obj instanceof Mesh && obj.material) {
+      const mat = obj.material as MeshStandardMaterial;
+      const cloned = mat.clone();
+      cloned.color = c.clone();
+      if (DEBUG.PLAYER_GLOW) {
+        cloned.emissive = c.clone();
+        cloned.emissiveIntensity = .75;
+      } else {
+        cloned.emissive = c.clone().multiplyScalar(0.15);
+        cloned.emissiveIntensity = 1;
+      }
+      obj.material = cloned;
+    }
+  });
+}
+
+  private initExhaust(): void {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.fillStyle = "rgba(255,180,80,1)";
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const x = 32 + Math.cos(angle) * 20;
+      const y = 32 + Math.sin(angle) * 20;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    const tex = new CanvasTexture(canvas);
+    tex.magFilter = NearestFilter;
+    tex.minFilter = NearestFilter;
+
+    const positions = new Float32Array(SHIP.EXHAUST_MAX * 3).fill(99999);
+    const colors = new Float32Array(SHIP.EXHAUST_MAX * 3);
+
+    for (let i = 0; i < SHIP.EXHAUST_MAX; i++) {
+      const c = new Color(
+        EXHAUST_PALETTE[Math.floor(Math.random() * EXHAUST_PALETTE.length)],
+      );
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+
+      this.particles.push({
+        position: new Vector3(99999, 99999, 99999),
+        velocity: new Vector3(),
+        life: 0,
+        maxLife: 0,
+      });
+    }
+
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(positions, 3));
+    geo.setAttribute("color", new BufferAttribute(colors, 3));
+
+    const mat = new PointsMaterial({
+      color: 0xffffff,
+      size: 8,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.5,
+      map: tex,
+      alphaTest: 0.01,
+      depthWrite: false,
+      fog: false,
+      vertexColors: true,
+      blending: AdditiveBlending,
+    });
+
+    this.exhaust = new Points(geo, mat);
+    this.exhaust.frustumCulled = false;
+    this.exhaust.geometry.boundingSphere = new Sphere(new Vector3(), 999999);
+    this.scene.add(this.exhaust);
+  }
+
+  applySnapshot(snap: {
+    x: number;
+    y: number;
+    z: number;
+    vx?: number;
+    vy?: number;
+    vz?: number;
+    heading: number;
+    pitch: number;
+    bank: number;
+    thrustLevel: number;
+  }): void {
+    this.root.position.set(snap.x, snap.y, snap.z);
+    this._euler.set(snap.pitch, snap.heading, 0, "YXZ");
+    this._quat.setFromEuler(this._euler);
+    this.root.quaternion.copy(this._quat);
+
+    if (this.model) this.model.rotation.y = snap.bank;
+
+    this.currentThrustLevel = snap.thrustLevel;
+    this.currentVx = snap.vx ?? 0;
+    this.currentVy = snap.vy ?? 0;
+    this.currentVz = snap.vz ?? 0;
+  }
+
+  update(dt: number): void {
+    if (!this.exhaust) return;
+
+    if (this.currentThrustLevel > 0.05) {
+      const back = new Vector3(0, 0, -0.35).applyQuaternion(
+        this.root.quaternion,
+      );
+      const nozzle = this.root.position.clone().addScaledVector(back, 5.5 * 3);
+
+      const speed = Math.sqrt(
+        this.currentVx * this.currentVx +
+          this.currentVy * this.currentVy +
+          this.currentVz * this.currentVz,
+      );
+      const speedT = Math.min(1, speed / SHIP.MAX_SPEED_FOR_EXHAUST);
+      const activeCount = Math.floor(
+        SHIP.EXHAUST_MIN + speedT * (SHIP.EXHAUST_MAX - SHIP.EXHAUST_MIN),
+      );
+
+      for (let i = 0; i < activeCount; i++) {
+        const p = this.particles[i];
+        if (p.life <= 0) {
+          p.position.copy(nozzle);
+          p.velocity.copy(back).multiplyScalar(8 + Math.random() * 6);
+          p.velocity.x += (Math.random() - 0.5) * 4;
+          p.velocity.y += (Math.random() - 0.5) * 4;
+          p.velocity.z += (Math.random() - 0.5) * 10;
+          p.life = 0.2 + Math.random() * 0.4;
+          p.maxLife = p.life;
+        }
+      }
+    }
+
+    const pos = this.exhaust.geometry.attributes.position.array as Float32Array;
+    let i = 0;
+    for (const p of this.particles) {
+      if (p.life > 0) {
+        p.life -= dt;
+        p.position.addScaledVector(p.velocity, dt);
+        pos[i] = p.position.x;
+        pos[i + 1] = p.position.y;
+        pos[i + 2] = p.position.z;
+      } else {
+        pos[i] = pos[i + 1] = pos[i + 2] = 99999;
+      }
+      i += 3;
+    }
+    this.exhaust.geometry.attributes.position.needsUpdate = true;
+    (this.exhaust.material as PointsMaterial).opacity = Math.min(
+      1,
+      this.currentThrustLevel * 2,
+    );
   }
 
   dispose(): void {
-    this.scene.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    (this.mesh.material as MeshStandardMaterial).dispose();
+    this.scene.remove(this.root);
+    if (this.exhaust) {
+      this.scene.remove(this.exhaust);
+      this.exhaust.geometry.dispose();
+      (this.exhaust.material as PointsMaterial).dispose();
+    }
+    if (this.model) {
+      this.model.traverse((obj) => {
+        if (obj instanceof Mesh) {
+          obj.geometry?.dispose();
+          (obj.material as MeshStandardMaterial)?.dispose();
+        }
+      });
+    }
   }
 }

@@ -1,13 +1,29 @@
 export const SHIP = {
   THRUST_FORCE: 132,
+  YAW_RATE: 1.4,
+  MAX_PITCH: Math.PI * 0.28,
+  PITCH_SMOOTH: 2,
+  BANK_ANGLE_MAX: 0.52,
+  BANK_SMOOTH: 7,
   VELOCITY_DAMPING: 0.992,
   BOOST_MULTIPLIER: 5.0,
 
-  YAW_RATE: 1.4,
-  MAX_PITCH: Math.PI * 0.28, 
-  PITCH_SMOOTH: 2, 
-  BANK_ANGLE_MAX: 0.52, 
-  BANK_SMOOTH: 7, 
+  EXHAUST_MIN: 25,
+  EXHAUST_MAX: 75,
+  MAX_SPEED_FOR_EXHAUST: 800,
 
-  SPAWN_RADIUS: 7500, 
+  SPAWN_RADIUS: 10,
+  SPAWN_Y: 0,
+} as const;
+
+export const MAP = {
+  BOUNDARY_RADIUS: 9000,
+  Y_MIN: -950,
+  Y_MAX: 950,
+  BOUNDARY_WARNING: 75,
+  BOUNDARY_FORCE: 150,
+} as const;
+
+export const DEBUG = {
+  PLAYER_GLOW: true,
 } as const;

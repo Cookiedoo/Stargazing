@@ -5,3 +5,4 @@ export * from "./state/Ship.js";
 export * from "./state/GameState.js";
 export * from "./physics/flight.js";
 export * from './tuning.js';
+export * from './systems/boundary.js';

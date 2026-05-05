@@ -1,32 +1,34 @@
-import type { Texture } from "three";
-
-interface CachedAsset {
-  // TODO Sprint 3: union type for GLB/Texture/AudioBuffer
-  asset: Texture | unknown;
-  refCount: number;
-}
+import { Group } from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 export class AssetLoader {
-  private cache = new Map<string, CachedAsset>();
+  private gltfLoader: GLTFLoader;
+  private cache: Map<string, Promise<Group>> = new Map();
 
-  // TODO Sprint 3: implement loadGLB with GLTFLoader + DRACOLoader.
-  //   Pattern: return cached promise if already loading,
-  //   return cached asset if loaded, otherwise kick off load.
-
-  // TODO Sprint 3: implement loadTexture with TextureLoader.
-
-  // TODO Sprint 5: implement loadAudio (Howler integration).
-
-  release(key: string): void {
-    const entry = this.cache.get(key);
-    if (!entry) return;
-    entry.refCount--;
-    if (entry.refCount <= 0) {
-      this.cache.delete(key);
-    }
+  constructor() {
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+    this.gltfLoader = new GLTFLoader();
+    this.gltfLoader.setDRACOLoader(draco);
   }
 
-  clear(): void {
-    this.cache.clear();
+  async loadGLB(url: string): Promise<Group> {
+    let promise = this.cache.get(url);
+    if (!promise) {
+      promise = new Promise<Group>((resolve, reject) => {
+        this.gltfLoader.load(
+          url,
+          (gltf) => resolve(gltf.scene),
+          undefined,
+          (err) => reject(err),
+        );
+      });
+      this.cache.set(url, promise);
+    }
+    const original = await promise;
+    return original.clone(true);
   }
 }
+
+export const assets = new AssetLoader();

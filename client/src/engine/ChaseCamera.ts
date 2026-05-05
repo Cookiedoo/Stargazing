@@ -1,30 +1,41 @@
-import { PerspectiveCamera, Vector3 } from "three";
+import { PerspectiveCamera, Vector3, Quaternion, Euler } from 'three';
 
 export interface ChaseTarget {
   x: number;
   y: number;
   z: number;
-  yaw: number;
+  heading: number;
+  pitch: number;
 }
 
 export class ChaseCamera {
   private camera: PerspectiveCamera;
-  private offsetUp: number = 6;
-  private offsetBack: number = 22;
-  private lookAtUp: number = 8;
+
+  private offset: Vector3 = new Vector3(0, 20, 50);
+  private lookAtOffset: Vector3 = new Vector3(0, 8, 0);
+
   private positionLag: number = 0.08;
   private lookAtLag: number = 0.18;
-  private currentLookAt: Vector3 = new Vector3();
+
+  private smoothLook: Vector3 = new Vector3();
+  private initialized: boolean = false;
+
   private _desiredPos: Vector3 = new Vector3();
-  private _desiredLookAt: Vector3 = new Vector3();
+  private _desiredLook: Vector3 = new Vector3();
+  private _targetQuat: Quaternion = new Quaternion();
+  private _targetEuler: Euler = new Euler();
+  private _targetPos: Vector3 = new Vector3();
 
   constructor(camera: PerspectiveCamera) {
     this.camera = camera;
   }
 
-  setOffset(_sideways: number, up: number, back: number): void {
-    this.offsetUp = up;
-    this.offsetBack = back;
+  setOffset(x: number, y: number, z: number): void {
+    this.offset.set(x, y, z);
+  }
+
+  setLookAtOffset(x: number, y: number, z: number): void {
+    this.lookAtOffset.set(x, y, z);
   }
 
   setSmoothing(positionLag: number, lookAtLag: number): void {
@@ -32,47 +43,44 @@ export class ChaseCamera {
     this.lookAtLag = lookAtLag;
   }
 
-  snapTo(target: ChaseTarget): void {
-    const forwardX = Math.sin(target.yaw);
-    const forwardZ = Math.cos(target.yaw);
-
-    this.camera.position.set(
-      target.x - forwardX * this.offsetBack,
-      target.y + this.offsetUp,
-      target.z - forwardZ * this.offsetBack,
-    );
-
-    this.currentLookAt.set(
-      target.x,
-      target.y + this.lookAtUp,
-      target.z,
-    );
-
-    this.camera.lookAt(this.currentLookAt);
+  reset(): void {
+    this.initialized = false;
   }
 
-  update(dt: number, target: ChaseTarget): void {
-    const forwardX = Math.sin(target.yaw);
-    const forwardZ = Math.cos(target.yaw);
+  snapTo(target: ChaseTarget): void {
+    this.computeTargetQuat(target);
+    this._targetPos.set(target.x, target.y, target.z);
 
-    this._desiredPos.set(
-      target.x - forwardX * this.offsetBack,
-      target.y + this.offsetUp,
-      target.z - forwardZ * this.offsetBack,
-    );
+    this._desiredPos.copy(this.offset).applyQuaternion(this._targetQuat).add(this._targetPos);
+    this._desiredLook.copy(this.lookAtOffset).applyQuaternion(this._targetQuat).add(this._targetPos);
 
-    this._desiredLookAt.set(
-      target.x,
-      target.y + this.lookAtUp,
-      target.z,
-    );
+    this.camera.position.copy(this._desiredPos);
+    this.smoothLook.copy(this._desiredLook);
+    this.camera.lookAt(this.smoothLook);
+    this.initialized = true;
+  }
 
-    const posFactor = 1 - Math.pow(1 - this.positionLag, dt * 60);
-    this.camera.position.lerp(this._desiredPos, posFactor);
+  update(_dt: number, target: ChaseTarget): void {
+    this.computeTargetQuat(target);
+    this._targetPos.set(target.x, target.y, target.z);
 
-    const lookFactor = 1 - Math.pow(1 - this.lookAtLag, dt * 60);
-    this.currentLookAt.lerp(this._desiredLookAt, lookFactor);
+    this._desiredPos.copy(this.offset).applyQuaternion(this._targetQuat).add(this._targetPos);
+    this._desiredLook.copy(this.lookAtOffset).applyQuaternion(this._targetQuat).add(this._targetPos);
 
-    this.camera.lookAt(this.currentLookAt);
+    if (!this.initialized) {
+      this.camera.position.copy(this._desiredPos);
+      this.smoothLook.copy(this._desiredLook);
+      this.initialized = true;
+    } else {
+      this.camera.position.lerp(this._desiredPos, this.positionLag);
+      this.smoothLook.lerp(this._desiredLook, this.lookAtLag);
+    }
+
+    this.camera.lookAt(this.smoothLook);
+  }
+
+  private computeTargetQuat(target: ChaseTarget): void {
+    this._targetEuler.set(target.pitch, target.heading, 0, 'YXZ');
+    this._targetQuat.setFromEuler(this._targetEuler);
   }
 }

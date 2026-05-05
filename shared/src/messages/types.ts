@@ -4,7 +4,6 @@ export interface Envelope<T extends string, P> {
   payload: P;
 }
 
-// --- Sprint 1: presence + chat ---
 export type HelloMessage = Envelope<"hello", { text: string; from: string }>;
 export type WelcomeMessage = Envelope<
   "welcome",
@@ -13,14 +12,14 @@ export type WelcomeMessage = Envelope<
 export type PlayerJoinedMessage = Envelope<"player_joined", { id: string }>;
 export type PlayerLeftMessage = Envelope<"player_left", { id: string }>;
 
-// --- Sprint 2.5: simulation ---
-// Client tells the server its current input each frame. Server validates.
 export type InputMessage = Envelope<
   "input",
   {
     thrust: number;
+    brake: number;
     strafe: number;
-    // Client tick when this input was generated. Used Sprint 3 for reconciliation.
+    pitch: number;
+    boost: boolean;
     clientTick: number;
   }
 >;
@@ -33,11 +32,13 @@ export interface ShipSnapshotWire {
   vx: number;
   vy: number;
   vz: number;
-  yaw: number;
+  heading: number;
   pitch: number;
-  bank: number; 
+  bank: number;
+  thrustLevel: number;
   lastInputTick: number;
 }
+
 export type SnapshotMessage = Envelope<
   "snapshot",
   {
