@@ -18,8 +18,7 @@ import {
 } from "three";
 import { assets } from "../engine/assetLoader.js";
 import { SHIP } from "@stargazing/shared";
-import { DEBUG } from '@stargazing/shared';
-
+import { DEBUG } from "@stargazing/shared";
 
 const EXHAUST_PALETTE = [
   0x2b0000, 0x5a0000, 0x8b0000, 0xb30000, 0xcc0000, 0xff0000, 0xff3300,
@@ -52,7 +51,6 @@ export class ShipView {
 
   private _quat: Quaternion = new Quaternion();
   private _euler: Euler = new Euler();
-  
 
   constructor(scene: Scene, color: number = 0x6080ff) {
     this.scene = scene;
@@ -72,7 +70,9 @@ export class ShipView {
 
   private async loadModel(): Promise<void> {
     try {
-      this.model = await assets.loadGLB("/RocketFLY.glb");
+      this.model = await assets.loadGLB(
+        `${import.meta.env.BASE_URL}RocketFLY.glb`,
+      );
       this.tintModel(this.model, this.color);
       this.orientGroup.add(this.model);
     } catch (err) {
@@ -80,24 +80,24 @@ export class ShipView {
     }
   }
 
-private tintModel(root: Group, color: number): void {
-  const c = new Color(color);
-  root.traverse((obj) => {
-    if (obj instanceof Mesh && obj.material) {
-      const mat = obj.material as MeshStandardMaterial;
-      const cloned = mat.clone();
-      cloned.color = c.clone();
-      if (DEBUG.PLAYER_GLOW) {
-        cloned.emissive = c.clone();
-        cloned.emissiveIntensity = .75;
-      } else {
-        cloned.emissive = c.clone().multiplyScalar(0.15);
-        cloned.emissiveIntensity = 1;
+  private tintModel(root: Group, color: number): void {
+    const c = new Color(color);
+    root.traverse((obj) => {
+      if (obj instanceof Mesh && obj.material) {
+        const mat = obj.material as MeshStandardMaterial;
+        const cloned = mat.clone();
+        cloned.color = c.clone();
+        if (DEBUG.PLAYER_GLOW) {
+          cloned.emissive = c.clone();
+          cloned.emissiveIntensity = 0.75;
+        } else {
+          cloned.emissive = c.clone().multiplyScalar(0.15);
+          cloned.emissiveIntensity = 1;
+        }
+        obj.material = cloned;
       }
-      obj.material = cloned;
-    }
-  });
-}
+    });
+  }
 
   private initExhaust(): void {
     const canvas = document.createElement("canvas");
