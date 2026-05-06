@@ -58,7 +58,10 @@ export class TitleScreen implements Screen {
       </div>
 
       <div class="title-center">
-        <div class="title-logo">STARGAZING</div>
+        <div class="title-logo">
+          <div class="title-logo-sub">PROJECT</div>
+          <div class="title-logo-main">STARGAZE</div>
+        </div>
         <div class="title-actions">
           <div class="title-action-row">
             <button class="title-btn title-btn-primary" data-play-btn disabled>PLAY</button>
@@ -80,13 +83,9 @@ export class TitleScreen implements Screen {
     const joinBtn = hud.querySelector<HTMLButtonElement>("[data-join-btn]");
 
     authBtn?.addEventListener("click", () => this.openAuth());
-    playBtn?.addEventListener("click", () =>
-      showToast("Quick Match coming in Sprint 9 — try Create Room"),
-    );
+    playBtn?.addEventListener("click", () => showToast("Quick Match coming in Sprint 9 — try Create Room"));
     createBtn?.addEventListener("click", () => this.createRoom());
-    joinBtn?.addEventListener("click", () =>
-      this.joinRoom(joinInput?.value ?? ""),
-    );
+    joinBtn?.addEventListener("click", () => this.joinRoom(joinInput?.value ?? ""));
     joinInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this.joinRoom(joinInput.value);
     });
@@ -137,10 +136,7 @@ export class TitleScreen implements Screen {
 
   private async createRoom(): Promise<void> {
     try {
-      const r = await fetch(`${SERVER_HTTP}/room/create`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const r = await fetch(`${SERVER_HTTP}/room/create`, { method: "POST", credentials: "include" });
       if (!r.ok) throw new Error(`server returned ${r.status}`);
       const data = (await r.json()) as { code: string };
       this.manager.go(new LobbyScreen(this.manager, data.code));

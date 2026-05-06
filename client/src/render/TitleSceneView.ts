@@ -1,22 +1,20 @@
 import {
-  AmbientLight,
-  CylinderGeometry,
+  ACESFilmicToneMapping,
+  BoxGeometry,
+  Color,
   DirectionalLight,
   Group,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
-  WebGLRenderer,
-  ACESFilmicToneMapping,
+  SphereGeometry,
   SRGBColorSpace,
-  Color,
-  BoxGeometry,
+  WebGLRenderer,
 } from "three";
 import { assets } from "../engine/assetLoader.js";
+import { DefaultSpaceScene } from "./DefaultSpaceScene.js";
 import { DEBUG } from "@stargazing/shared";
-
-const ROTATION_SPEED = 0.3;
 
 export class TitleSceneView {
   private renderer: WebGLRenderer;
@@ -24,19 +22,21 @@ export class TitleSceneView {
   private camera: PerspectiveCamera;
   private container: HTMLElement;
 
-  private displayBase: Group;
+  private space: DefaultSpaceScene;
+  private foreground: Group;
   private rocketRoot: Group;
   private placeholderRoot: Group;
-  private rotationY: number = 0;
+  private surface: Mesh;
 
+  private elapsed: number = 0;
   private resizeObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
 
-    this.renderer = new WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer = new WebGLRenderer({ antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x0a0e1f, 1);
+    this.renderer.setClearColor(0x000005, 1);
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.domElement.style.width = "100%";
@@ -45,46 +45,45 @@ export class TitleSceneView {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new Scene();
-    this.scene.background = new Color(0x0a0e1f);
+    this.scene.background = new Color(0x000005);
 
-    this.camera = new PerspectiveCamera(45, 1, 0.1, 100);
-    this.camera.position.set(0, 4, 9);
-    this.camera.lookAt(0, 1.2, 0);
+    this.camera = new PerspectiveCamera(50, 1, 0.1, 12000);
+    this.camera.position.set(0, 5, 15);
+    this.camera.lookAt(0, 2, 0);
 
-    const ambient = new AmbientLight(0xb0c4ff, 0.5);
-    this.scene.add(ambient);
+    this.space = new DefaultSpaceScene(this.scene);
 
-    const key = new DirectionalLight(0xffffff, 1.2);
-    key.position.set(4, 8, 6);
+    const key = new DirectionalLight(0xffeac0, 1.0);
+    key.position.set(-8, 10, 6);
     this.scene.add(key);
 
-    const rim = new DirectionalLight(0x6080ff, 0.6);
-    rim.position.set(-5, 2, -4);
-    this.scene.add(rim);
+    const fill = new DirectionalLight(0x6080ff, 0.45);
+    fill.position.set(8, 4, -4);
+    this.scene.add(fill);
 
-    this.displayBase = new Group();
-    this.scene.add(this.displayBase);
+    this.foreground = new Group();
+    this.scene.add(this.foreground);
 
-    const pedestalGeo = new CylinderGeometry(2.4, 2.6, 0.8, 32);
-    const pedestalMat = new MeshStandardMaterial({
-      color: 0x2a3050,
-      metalness: 0.3,
-      roughness: 0.5,
-      emissive: 0x4060a0,
-      emissiveIntensity: 0.15,
+    const surfaceGeo = new SphereGeometry(35, 64, 64);
+    const surfaceMat = new MeshStandardMaterial({
+      color: 0x4a5a8a,
+      emissive: 0x101830,
+      emissiveIntensity: 0.2,
+      roughness: 0.85,
+      metalness: 0.1,
     });
-    const pedestal = new Mesh(pedestalGeo, pedestalMat);
-    pedestal.position.y = 0.4;
-    this.displayBase.add(pedestal);
+    this.surface = new Mesh(surfaceGeo, surfaceMat);
+    this.surface.position.set(0, -35, 0);
+    this.foreground.add(this.surface);
 
     this.rocketRoot = new Group();
-    this.rocketRoot.position.set(-1.0, 0.8, 0);
-    this.rocketRoot.scale.setScalar(0.45);
-    this.displayBase.add(this.rocketRoot);
+    this.rocketRoot.position.set(0, 0.8, 0);
+    this.rocketRoot.scale.setScalar(0.5);
+    this.foreground.add(this.rocketRoot);
 
     this.placeholderRoot = new Group();
-    this.placeholderRoot.position.set(1.0, 0.8, 0);
-    this.displayBase.add(this.placeholderRoot);
+    this.placeholderRoot.position.set(2.6, 0, 0.5);
+    this.foreground.add(this.placeholderRoot);
 
     this.loadRocket();
     this.buildAstronautPlaceholder();
@@ -97,12 +96,7 @@ export class TitleSceneView {
   private async loadRocket(): Promise<void> {
     try {
       const model = await assets.loadGLB(`${import.meta.env.BASE_URL}RocketFLY.glb`);
-      const orient = new Group();
-      orient.rotation.x = -Math.PI / 2;
-      orient.rotation.y = Math.PI;
-      orient.add(model);
-      this.rocketRoot.add(orient);
-
+      this.rocketRoot.add(model);
       if (DEBUG.PLAYER_GLOW) {
         model.traverse((obj) => {
           if (obj instanceof Mesh && obj.material instanceof MeshStandardMaterial) {
@@ -125,27 +119,37 @@ export class TitleSceneView {
       color: 0xc4d0e8,
       metalness: 0.2,
       roughness: 0.6,
-      emissive: 0x2a3050,
-      emissiveIntensity: 0.3,
     });
     const body = new Mesh(bodyGeo, bodyMat);
     body.position.y = 0.6;
     this.placeholderRoot.add(body);
 
-    const visorGeo = new BoxGeometry(0.55, 0.4, 0.05);
+    const headGeo = new SphereGeometry(0.32, 16, 16);
+    const headMat = new MeshStandardMaterial({
+      color: 0xc4d0e8,
+      metalness: 0.3,
+      roughness: 0.4,
+    });
+    const head = new Mesh(headGeo, headMat);
+    head.position.y = 1.5;
+    this.placeholderRoot.add(head);
+
+    const visorGeo = new BoxGeometry(0.4, 0.3, 0.05);
     const visorMat = new MeshStandardMaterial({
       color: 0x1a1010,
       emissive: 0x6040a0,
-      emissiveIntensity: 0.4,
+      emissiveIntensity: 0.5,
     });
     const visor = new Mesh(visorGeo, visorMat);
-    visor.position.set(0, 0.95, 0.3);
+    visor.position.set(0, 1.5, 0.28);
     this.placeholderRoot.add(visor);
   }
 
   update(dt: number): void {
-    this.rotationY += dt * ROTATION_SPEED;
-    this.displayBase.rotation.y = this.rotationY;
+    this.elapsed += dt;
+    this.space.update(dt);
+    this.rocketRoot.position.y = 0.8 + Math.sin(this.elapsed * 0.4) * 0.08;
+    this.placeholderRoot.position.y = Math.sin(this.elapsed * 0.5 + 1) * 0.05;
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -161,6 +165,7 @@ export class TitleSceneView {
   dispose(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.space.dispose();
     this.scene.traverse((obj) => {
       if (obj instanceof Mesh) {
         obj.geometry.dispose();
