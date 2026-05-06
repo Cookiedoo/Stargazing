@@ -156,6 +156,7 @@ export class MatchScreen implements Screen {
         this.inputSendAccumulator -= this.INPUT_SEND_INTERVAL;
 
         this.clientTick++;
+        this.prediction.pushInput(this.clientTick, currentInput);
 
         this.socket.send({
           type: MSG.INPUT,

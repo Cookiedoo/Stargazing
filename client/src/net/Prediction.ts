@@ -25,6 +25,15 @@ export class Prediction {
   private accumulator = 0;
 
   pushInput(clientTick: number, input: ShipInput): void {
+    if (clientTick <= 0) return;
+
+    const last = this.buffer[this.buffer.length - 1];
+    if (last?.tick === clientTick) {
+      last.input = input;
+      return;
+    }
+    if (last && clientTick < last.tick) return;
+
     this.buffer.push({ tick: clientTick, input });
 
     if (this.buffer.length > 240) {
@@ -32,10 +41,8 @@ export class Prediction {
     }
   }
 
-  applyInput(clientTick: number, input: ShipInput, dt: number): void {
+  applyInput(_clientTick: number, input: ShipInput, dt: number): void {
     if (!this.gotInitialSnapshot) return;
-
-    this.pushInput(clientTick, input);
 
     this.accumulator += dt;
     const max = NETCODE.TICK_DT * 10;
@@ -54,29 +61,23 @@ export class Prediction {
       return;
     }
 
+    const renderXBefore = this.renderX;
+    const renderYBefore = this.renderY;
+    const renderZBefore = this.renderZ;
+    const renderHeadingBefore = this.renderHeading;
+
     this.ship.applySnapshot(snap);
 
     this.buffer = this.buffer.filter((b) => b.tick > snap.lastInputTick);
 
-    const tmp = new Ship();
-
-    tmp.applySnapshot(snap);
-
     for (const entry of this.buffer) {
-      stepShip(tmp, entry.input, NETCODE.TICK_DT);
+      stepShip(this.ship, entry.input, NETCODE.TICK_DT);
     }
 
-    const dx = tmp.x - this.ship.x;
-    const dy = tmp.y - this.ship.y;
-    const dz = tmp.z - this.ship.z;
-    const dh = tmp.heading - this.ship.heading;
-
-    const alpha = 0.12;
-
-    this.errorX += dx * alpha;
-    this.errorY += dy * alpha;
-    this.errorZ += dz * alpha;
-    this.errorHeading += dh * alpha;
+    this.errorX = renderXBefore - this.ship.x;
+    this.errorY = renderYBefore - this.ship.y;
+    this.errorZ = renderZBefore - this.ship.z;
+    this.errorHeading = angleDelta(this.ship.heading, renderHeadingBefore);
   }
 
   update(dt: number): void {
@@ -100,4 +101,11 @@ export class Prediction {
   get renderHeading(): number {
     return this.ship.heading + this.errorHeading;
   }
+}
+
+function angleDelta(from: number, to: number): number {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
 }
