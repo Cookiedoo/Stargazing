@@ -5,26 +5,63 @@ import {
   type ShipInput,
   type ShipSnapshotWire,
 } from "@stargazing/shared";
+
 import { InputBuffer } from "./InputBuffer.js";
+
+function angleDelta(a: number, b: number): number {
+  let diff = a - b;
+
+  while (diff > Math.PI) {
+    diff -= Math.PI * 2;
+  }
+
+  while (diff < -Math.PI) {
+    diff += Math.PI * 2;
+  }
+
+  return diff;
+}
 
 export class Prediction {
   readonly ship: Ship = new Ship();
+
   private buffer: InputBuffer = new InputBuffer();
+
   private gotInitialSnapshot = false;
+
   private accumulator = 0;
+
   private errorX = 0;
   private errorY = 0;
   private errorZ = 0;
   private errorHeading = 0;
 
-  applyInput(clientTick: number, input: ShipInput, dt: number): void {
-    if (!this.gotInitialSnapshot) return;
+  applyInput(
+    clientTick: number,
+    input: ShipInput,
+    dt: number,
+  ): void {
+    if (!this.gotInitialSnapshot) {
+      return;
+    }
+
     this.accumulator += dt;
+
     const maxAccumulator = NETCODE.TICK_DT * 10;
-    if (this.accumulator > maxAccumulator) this.accumulator = maxAccumulator;
+
+    if (this.accumulator > maxAccumulator) {
+      this.accumulator = maxAccumulator;
+    }
+
     while (this.accumulator >= NETCODE.TICK_DT) {
       stepShip(this.ship, input, NETCODE.TICK_DT);
-      this.buffer.push(clientTick, input, NETCODE.TICK_DT);
+
+      this.buffer.push(
+        clientTick,
+        input,
+        NETCODE.TICK_DT,
+      );
+
       this.accumulator -= NETCODE.TICK_DT;
     }
   }
@@ -42,35 +79,43 @@ export class Prediction {
     const predictedHeading = this.ship.heading;
 
     this.ship.applySnapshot(snap);
+
     this.buffer.ackUpTo(snap.lastInputTick);
 
     for (const entry of this.buffer.all()) {
       stepShip(this.ship, entry.input, entry.dt);
     }
 
-    this.errorX += predictedX - this.ship.x;
-    this.errorY += predictedY - this.ship.y;
-    this.errorZ += predictedZ - this.ship.z;
-    this.errorHeading += predictedHeading - this.ship.heading;
+    this.errorX = predictedX - this.ship.x;
+    this.errorY = predictedY - this.ship.y;
+    this.errorZ = predictedZ - this.ship.z;
+    this.errorHeading = angleDelta(
+      predictedHeading,
+      this.ship.heading,
+    );
   }
 
   update(dt: number): void {
-    const decay = 1 - Math.pow(0.001, dt);
-    this.errorX *= 1 - decay;
-    this.errorY *= 1 - decay;
-    this.errorZ *= 1 - decay;
-    this.errorHeading *= 1 - decay;
+    const correction = Math.min(1, dt * 12);
+
+    this.errorX *= 1 - correction;
+    this.errorY *= 1 - correction;
+    this.errorZ *= 1 - correction;
+    this.errorHeading *= 1 - correction;
   }
 
   get renderX(): number {
     return this.ship.x + this.errorX;
   }
+
   get renderY(): number {
     return this.ship.y + this.errorY;
   }
+
   get renderZ(): number {
     return this.ship.z + this.errorZ;
   }
+
   get renderHeading(): number {
     return this.ship.heading + this.errorHeading;
   }
