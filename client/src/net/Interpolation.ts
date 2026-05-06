@@ -1,6 +1,7 @@
 import type { ShipSnapshotWire } from "@stargazing/shared";
+import { NETCODE } from "@stargazing/shared/tuning";
 
-const INTERP_DELAY_MS = 150;
+const INTERP_DELAY_MS = NETCODE.INTERPOLATION_DELAY_MS;
 const MAX_BUFFER_MS = 2000;
 
 interface TimedSnapshot {

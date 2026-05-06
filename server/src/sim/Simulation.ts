@@ -12,7 +12,8 @@ export const TICK_DT = 1 / TICK_RATE_HZ;
 export class Simulation {
   state: GameState;
   private latestInputs: Map<string, ShipInput> = new Map();
-  private lastInputTick: Map<string, number> = new Map();
+  private lastReceivedInputTick: Map<string, number> = new Map();
+  private lastProcessedInputTick: Map<string, number> = new Map();
 
   constructor() {
     this.state = new GameState();
@@ -21,13 +22,15 @@ export class Simulation {
   addPlayer(id: string): void {
     this.state.addPlayer(id);
     this.latestInputs.set(id, this.zeroInput());
-    this.lastInputTick.set(id, 0);
+    this.lastReceivedInputTick.set(id, 0);
+    this.lastProcessedInputTick.set(id, 0);
   }
 
   removePlayer(id: string): void {
     this.state.removePlayer(id);
     this.latestInputs.delete(id);
-    this.lastInputTick.delete(id);
+    this.lastReceivedInputTick.delete(id);
+    this.lastProcessedInputTick.delete(id);
   }
 
   receiveInput(playerId: string, input: ShipInput, clientTick: number): void {
@@ -39,10 +42,10 @@ export class Simulation {
       boost: !!input.boost,
     });
 
-    const prev = this.lastInputTick.get(playerId) ?? 0;
+    const prev = this.lastReceivedInputTick.get(playerId) ?? 0;
 
     if (clientTick > prev) {
-      this.lastInputTick.set(playerId, clientTick);
+      this.lastReceivedInputTick.set(playerId, clientTick);
     }
   }
 
@@ -54,35 +57,40 @@ export class Simulation {
 
       stepShip(ship, input, TICK_DT);
       applyBoundary(ship);
+
+      this.lastProcessedInputTick.set(
+        id,
+        this.lastReceivedInputTick.get(id) ?? 0,
+      );
     }
   }
 
   buildSnapshot() {
-  const ships = [];
+    const ships = [];
 
-  for (const [id, ship] of this.state.ships) {
-    ships.push({
-      id,
-      x: ship.x,
-      y: ship.y,
-      z: ship.z,
-      vx: ship.vx,
-      vy: ship.vy,
-      vz: ship.vz,
-      heading: ship.heading,
-      pitch: ship.pitch,
-      bank: ship.bank,
-      thrustLevel: ship.thrustLevel,
-      lastInputTick: this.lastInputTick.get(id) ?? 0,
-    });
+    for (const [id, ship] of this.state.ships) {
+      ships.push({
+        id,
+        x: ship.x,
+        y: ship.y,
+        z: ship.z,
+        vx: ship.vx,
+        vy: ship.vy,
+        vz: ship.vz,
+        heading: ship.heading,
+        pitch: ship.pitch,
+        bank: ship.bank,
+        thrustLevel: ship.thrustLevel,
+        lastInputTick: this.lastProcessedInputTick.get(id) ?? 0,
+      });
+    }
+
+    return {
+      tick: this.state.tick,
+      serverTick: this.state.tick,
+      ships,
+    };
   }
-
-  return {
-    tick: this.state.tick,
-    serverTick: this.state.tick,
-    ships,
-  };
-}
 
   private zeroInput(): ShipInput {
     return {
