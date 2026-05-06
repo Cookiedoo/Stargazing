@@ -1,70 +1,64 @@
 import type { ShipSnapshotWire } from "@stargazing/shared";
 
-const INTERP_DELAY_MS = 150;
+const INTERP_DELAY_MS = 100;
 const MAX_BUFFER_AGE_MS = 1000;
 const MAX_EXTRAPOLATION_MS = 100;
 
 interface TimedSnapshot {
-  serverTimeMs: number;
+  receivedAt: number;
   snap: ShipSnapshotWire;
 }
 
 export class Interpolation {
   private buffer: TimedSnapshot[] = [];
-  private clockOffsetMs: number | null = null;
 
   push(
     snap: ShipSnapshotWire,
-    serverTimeMs: number,
-    receivedAtLocalMs: number,
+    _serverTimeMs: number,
+    receivedAt: number,
   ): void {
-    const offsetEstimate = receivedAtLocalMs - serverTimeMs;
-
-    if (this.clockOffsetMs === null) {
-      this.clockOffsetMs = offsetEstimate;
-    } else {
-      this.clockOffsetMs += (offsetEstimate - this.clockOffsetMs) * 0.1;
-    }
-
     const last = this.buffer[this.buffer.length - 1];
 
-    if (last && serverTimeMs <= last.serverTimeMs) {
+    if (last && receivedAt <= last.receivedAt) {
       return;
     }
 
     this.buffer.push({
-      serverTimeMs,
+      receivedAt,
       snap,
     });
 
-    const cutoff = serverTimeMs - MAX_BUFFER_AGE_MS;
+    const cutoff = receivedAt - MAX_BUFFER_AGE_MS;
 
-    while (this.buffer.length > 0 && this.buffer[0].serverTimeMs < cutoff) {
+    while (
+      this.buffer.length > 0 &&
+      this.buffer[0].receivedAt < cutoff
+    ) {
       this.buffer.shift();
     }
   }
 
-  sample(nowLocalMs: number): ShipSnapshotWire | null {
-    if (this.clockOffsetMs === null) {
-      return null;
-    }
-
+  sample(now: number): ShipSnapshotWire | null {
     if (this.buffer.length === 0) {
       return null;
     }
 
-    const renderServerTime = nowLocalMs - this.clockOffsetMs - INTERP_DELAY_MS;
+    if (this.buffer.length === 1) {
+      return this.buffer[0].snap;
+    }
+
+    const renderTime = now - INTERP_DELAY_MS;
 
     const first = this.buffer[0];
 
-    if (renderServerTime <= first.serverTimeMs) {
+    if (renderTime <= first.receivedAt) {
       return first.snap;
     }
 
     const last = this.buffer[this.buffer.length - 1];
 
-    if (renderServerTime >= last.serverTimeMs) {
-      const stallMs = renderServerTime - last.serverTimeMs;
+    if (renderTime >= last.receivedAt) {
+      const stallMs = renderTime - last.receivedAt;
 
       if (stallMs > MAX_EXTRAPOLATION_MS) {
         return last.snap;
@@ -85,12 +79,15 @@ export class Interpolation {
       const b = this.buffer[i + 1];
 
       if (
-        a.serverTimeMs <= renderServerTime &&
-        b.serverTimeMs >= renderServerTime
+        a.receivedAt <= renderTime &&
+        b.receivedAt >= renderTime
       ) {
-        const span = b.serverTimeMs - a.serverTimeMs;
+        const span = b.receivedAt - a.receivedAt;
 
-        const t = span > 0 ? (renderServerTime - a.serverTimeMs) / span : 0;
+        const t =
+          span > 0
+            ? (renderTime - a.receivedAt) / span
+            : 0;
 
         return lerpSnap(a.snap, b.snap, t);
       }
@@ -116,7 +113,9 @@ function lerpSnap(
     heading: lerpAngle(a.heading, b.heading, t),
     pitch: lerpAngle(a.pitch, b.pitch, t),
     bank: lerpAngle(a.bank, b.bank, t),
-    thrustLevel: a.thrustLevel + (b.thrustLevel - a.thrustLevel) * t,
+    thrustLevel:
+      a.thrustLevel +
+      (b.thrustLevel - a.thrustLevel) * t,
     lastInputTick: b.lastInputTick,
   };
 }
