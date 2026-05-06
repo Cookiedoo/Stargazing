@@ -35,6 +35,7 @@ const SUN_SPEC: PlanetSpec = {
   color: 0xffaa30,
   emissive: 0xffaa30,
   emissiveIntensity: 1.6,
+
 };
 
 const PLANET_SPECS: PlanetSpec[] = [
@@ -42,6 +43,10 @@ const PLANET_SPECS: PlanetSpec[] = [
   { name: "Rocky", radius: 140, position: [-1300, -300, -2200], color: 0x8a6a4a, emissive: 0x100806, emissiveIntensity: 0.18 },
   { name: "GasGiant", radius: 380, position: [2400, -400, -3200], color: 0xc06030, emissive: 0x301008, emissiveIntensity: 0.28 },
   { name: "Ice", radius: 100, position: [600, 600, -2000], color: 0xa0e0ff, emissive: 0x204060, emissiveIntensity: 0.35 },
+  { name: "RingedBlue", radius: 220, position: [1900, 200, -2800], color: 0x9280ff, emissive: 0x102040, emissiveIntensity: 0.25 },
+  { name: "Rocky", radius: 140, position: [-300, 300, -2200], color: 0x8a6a4a, emissive: 0x100806, emissiveIntensity: 0.18 },
+  { name: "GasGiant", radius: 380, position: [2400, -400, 3200], color: 0xc06030, emissive: 0x301008, emissiveIntensity: 0.28 },
+  { name: "Ice", radius: 100, position: [1000, 680, 2000], color: 0xa0e0ff, emissive: 0x204060, emissiveIntensity: 0.35 },
 ];
 
 interface AsteroidSpec {
@@ -102,6 +107,7 @@ export class DefaultSpaceScene {
       emissiveIntensity: spec.emissiveIntensity,
       roughness: 0.7,
       metalness: 0.1,
+    flatShading: true,
     });
     const mesh = new Mesh(geo, mat);
     mesh.position.set(spec.position[0], spec.position[1], spec.position[2]);
