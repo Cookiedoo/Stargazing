@@ -1,49 +1,46 @@
 import type { ShipSnapshotWire } from "@stargazing/shared";
 
-const INTERP_DELAY_TICKS = 3;
-const MAX_BUFFER_TICKS = 60;
+const INTERP_DELAY_MS = 150;
+const MAX_BUFFER_MS = 2000;
 
 interface TimedSnapshot {
-  tick: number;
+  receivedAtMs: number;
   snap: ShipSnapshotWire;
 }
 
 export class Interpolation {
   private buffer: TimedSnapshot[] = [];
-  private latestServerTick = 0;
 
-  push(snap: ShipSnapshotWire, serverTick: number): void {
-    this.latestServerTick = Math.max(this.latestServerTick, serverTick);
-
+  push(snap: ShipSnapshotWire, receivedAtMs: number): void {
     const last = this.buffer[this.buffer.length - 1];
-    if (last && serverTick <= last.tick) return;
+    if (last && receivedAtMs < last.receivedAtMs) return;
 
-    this.buffer.push({ tick: serverTick, snap });
+    this.buffer.push({ receivedAtMs, snap });
 
-    const cutoff = serverTick - MAX_BUFFER_TICKS;
-    while (this.buffer.length && this.buffer[0].tick < cutoff) {
+    const cutoff = receivedAtMs - MAX_BUFFER_MS;
+    while (this.buffer.length && this.buffer[0].receivedAtMs < cutoff) {
       this.buffer.shift();
     }
   }
 
-  sample(): ShipSnapshotWire | null {
+  sample(nowMs: number): ShipSnapshotWire | null {
     if (this.buffer.length === 0) return null;
 
-    const renderTick = this.latestServerTick - INTERP_DELAY_TICKS;
+    const renderTimeMs = nowMs - INTERP_DELAY_MS;
 
     const first = this.buffer[0];
     const last = this.buffer[this.buffer.length - 1];
 
-    if (renderTick <= first.tick) return first.snap;
-    if (renderTick >= last.tick) return last.snap;
+    if (renderTimeMs <= first.receivedAtMs) return first.snap;
+    if (renderTimeMs >= last.receivedAtMs) return last.snap;
 
     for (let i = 0; i < this.buffer.length - 1; i++) {
       const a = this.buffer[i];
       const b = this.buffer[i + 1];
 
-      if (a.tick <= renderTick && b.tick >= renderTick) {
-        const span = b.tick - a.tick;
-        const t = span > 0 ? (renderTick - a.tick) / span : 0;
+      if (a.receivedAtMs <= renderTimeMs && b.receivedAtMs >= renderTimeMs) {
+        const span = b.receivedAtMs - a.receivedAtMs;
+        const t = span > 0 ? (renderTimeMs - a.receivedAtMs) / span : 0;
         return lerpSnap(a.snap, b.snap, t);
       }
     }
