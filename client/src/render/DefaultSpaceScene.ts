@@ -35,7 +35,6 @@ const SUN_SPEC: PlanetSpec = {
   color: 0xffaa30,
   emissive: 0xffaa30,
   emissiveIntensity: 1.6,
-
 };
 
 const PLANET_SPECS: PlanetSpec[] = [
@@ -43,10 +42,10 @@ const PLANET_SPECS: PlanetSpec[] = [
   { name: "Rocky", radius: 140, position: [-1300, -300, -2200], color: 0x8a6a4a, emissive: 0x100806, emissiveIntensity: 0.18 },
   { name: "GasGiant", radius: 380, position: [2400, -400, -3200], color: 0xc06030, emissive: 0x301008, emissiveIntensity: 0.28 },
   { name: "Ice", radius: 100, position: [600, 600, -2000], color: 0xa0e0ff, emissive: 0x204060, emissiveIntensity: 0.35 },
-  { name: "RingedBlue", radius: 220, position: [1900, 200, -2800], color: 0x9280ff, emissive: 0x102040, emissiveIntensity: 0.25 },
-  { name: "Rocky", radius: 140, position: [-300, 300, -2200], color: 0x8a6a4a, emissive: 0x100806, emissiveIntensity: 0.18 },
-  { name: "GasGiant", radius: 380, position: [2400, -400, 3200], color: 0xc06030, emissive: 0x301008, emissiveIntensity: 0.28 },
-  { name: "Ice", radius: 100, position: [1000, 680, 2000], color: 0xa0e0ff, emissive: 0x204060, emissiveIntensity: 0.35 },
+  { name: "Violet", radius: 180, position: [-2600, 100, 2400], color: 0x9060c0, emissive: 0x201030, emissiveIntensity: 0.22 },
+  { name: "Crimson", radius: 260, position: [2200, 500, 1800], color: 0xa03030, emissive: 0x300808, emissiveIntensity: 0.25 },
+  { name: "Mint", radius: 120, position: [-1800, -200, 2800], color: 0x60c090, emissive: 0x103020, emissiveIntensity: 0.3 },
+  { name: "Ochre", radius: 200, position: [1400, -600, 2400], color: 0xc0a040, emissive: 0x302008, emissiveIntensity: 0.2 },
 ];
 
 interface AsteroidSpec {
@@ -59,6 +58,8 @@ const ASTEROID_SPECS: AsteroidSpec[] = [
   { position: [-450, -100, -800], scale: 28, rotationSpeed: [0.1, 0.2, 0.05] },
   { position: [820, 250, -1200], scale: 22, rotationSpeed: [-0.15, 0.1, 0.08] },
   { position: [-1100, 400, -1600], scale: 18, rotationSpeed: [0.12, -0.18, 0.1] },
+  { position: [600, -300, 900], scale: 24, rotationSpeed: [0.08, 0.15, -0.1] },
+  { position: [-700, 350, 1400], scale: 16, rotationSpeed: [-0.1, 0.2, 0.05] },
 ];
 
 export class DefaultSpaceScene {
@@ -84,7 +85,11 @@ export class DefaultSpaceScene {
     this.group.add(this.sun);
 
     this.sunLight = new PointLight(SUN_SPEC.color, 1.5, 0, 0);
-    this.sunLight.position.set(SUN_SPEC.position[0], SUN_SPEC.position[1], SUN_SPEC.position[2]);
+    this.sunLight.position.set(
+      SUN_SPEC.position[0],
+      SUN_SPEC.position[1],
+      SUN_SPEC.position[2],
+    );
     this.group.add(this.sunLight);
 
     this.planets = PLANET_SPECS.map((spec) => {
@@ -100,14 +105,14 @@ export class DefaultSpaceScene {
   }
 
   private createPlanet(spec: PlanetSpec): Mesh {
-    const geo = new SphereGeometry(spec.radius, 48, 48);
+    const geo = new SphereGeometry(spec.radius, 16, 12);
     const mat = new MeshStandardMaterial({
       color: spec.color,
       emissive: spec.emissive,
       emissiveIntensity: spec.emissiveIntensity,
-      roughness: 0.7,
-      metalness: 0.1,
-    flatShading: true,
+      roughness: 0.9,
+      metalness: 0.05,
+      flatShading: true,
     });
     const mesh = new Mesh(geo, mat);
     mesh.position.set(spec.position[0], spec.position[1], spec.position[2]);
@@ -119,11 +124,20 @@ export class DefaultSpaceScene {
     const positions = geo.attributes.position;
     for (let i = 0; i < positions.count; i++) {
       const r = 1 + (Math.sin(i * 12.7) * 0.5 + 0.5) * 0.25;
-      positions.setXYZ(i, positions.getX(i) * r, positions.getY(i) * r, positions.getZ(i) * r);
+      positions.setXYZ(
+        i,
+        positions.getX(i) * r,
+        positions.getY(i) * r,
+        positions.getZ(i) * r,
+      );
     }
     positions.needsUpdate = true;
-    geo.computeVertexNormals();
-    const mat = new MeshStandardMaterial({ color: 0x6a5a4a, roughness: 0.9, metalness: 0.1 });
+    const mat = new MeshStandardMaterial({
+      color: 0x6a5a4a,
+      roughness: 0.95,
+      metalness: 0.05,
+      flatShading: true,
+    });
     const mesh = new Mesh(geo, mat);
     mesh.position.set(spec.position[0], spec.position[1], spec.position[2]);
     mesh.scale.setScalar(spec.scale);
@@ -148,7 +162,12 @@ export class DefaultSpaceScene {
     }
     const geo = new BufferGeometry();
     geo.setAttribute("position", new BufferAttribute(positions, 3));
-    const mat = new PointsMaterial({ color: 0xffffff, size: 4, sizeAttenuation: true, fog: false });
+    const mat = new PointsMaterial({
+      color: 0xffffff,
+      size: 4,
+      sizeAttenuation: true,
+      fog: false,
+    });
     return new Points(geo, mat);
   }
 

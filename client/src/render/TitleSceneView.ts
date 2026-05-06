@@ -73,16 +73,16 @@ export class TitleSceneView {
       metalness: 0.1,
     });
     this.surface = new Mesh(surfaceGeo, surfaceMat);
-    this.surface.position.set(0, -35, 0);
+    this.surface.position.set(0, -38, 0);
     this.foreground.add(this.surface);
 
     this.rocketRoot = new Group();
-    this.rocketRoot.position.set(0, 0.8, 0);
-    this.rocketRoot.scale.setScalar(0.5);
+    this.rocketRoot.position.set(0, -2, 0);
+    this.rocketRoot.scale.setScalar(1.5);
     this.foreground.add(this.rocketRoot);
 
     this.placeholderRoot = new Group();
-    this.placeholderRoot.position.set(2.6, 0, 0.5);
+    this.placeholderRoot.position.set(2.6, -3, 0.5);
     this.foreground.add(this.placeholderRoot);
 
     this.loadRocket();
@@ -95,11 +95,16 @@ export class TitleSceneView {
 
   private async loadRocket(): Promise<void> {
     try {
-      const model = await assets.loadGLB(`${import.meta.env.BASE_URL}RocketFLY.glb`);
+      const model = await assets.loadGLB(
+        `${import.meta.env.BASE_URL}RocketFLY.glb`,
+      );
       this.rocketRoot.add(model);
       if (DEBUG.PLAYER_GLOW) {
         model.traverse((obj) => {
-          if (obj instanceof Mesh && obj.material instanceof MeshStandardMaterial) {
+          if (
+            obj instanceof Mesh &&
+            obj.material instanceof MeshStandardMaterial
+          ) {
             const cloned = obj.material.clone();
             cloned.emissive = new Color(0x6080ff);
             cloned.emissiveIntensity = 0.75;
@@ -148,7 +153,7 @@ export class TitleSceneView {
   update(dt: number): void {
     this.elapsed += dt;
     this.space.update(dt);
-    this.rocketRoot.position.y = 0.8 + Math.sin(this.elapsed * 0.4) * 0.08;
+    this.rocketRoot.position.y = -1.5 + Math.sin(this.elapsed * 0.4) * 0.08;
     this.placeholderRoot.position.y = Math.sin(this.elapsed * 0.5 + 1) * 0.05;
     this.renderer.render(this.scene, this.camera);
   }
@@ -169,12 +174,15 @@ export class TitleSceneView {
     this.scene.traverse((obj) => {
       if (obj instanceof Mesh) {
         obj.geometry.dispose();
-        if (obj.material instanceof MeshStandardMaterial) obj.material.dispose();
+        if (obj.material instanceof MeshStandardMaterial)
+          obj.material.dispose();
       }
     });
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement) {
-      this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
+      this.renderer.domElement.parentElement.removeChild(
+        this.renderer.domElement,
+      );
     }
   }
 }
