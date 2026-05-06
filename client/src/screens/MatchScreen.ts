@@ -12,13 +12,18 @@ import { MessageRouter } from "../net/MessageRouter.js";
 import type { SocketClient } from "../net/SocketClient.js";
 import { Prediction } from "../net/Prediction.js";
 import { Interpolation } from "../net/Interpolation.js";
-import { MSG } from "@stargazing/shared";
+import { MSG, type ShipInput } from "@stargazing/shared";
 import { Vector3 } from "three";
 
 const PLAYER_COLORS = [
   0x60ff90, 0x6080ff, 0xff8060, 0xffcc40, 0xc060ff, 0x40ffd0, 0xff60c0,
   0xa0ff40,
 ];
+
+const INPUT_SEND_HZ = 30;
+const INPUT_SEND_INTERVAL = 1 / INPUT_SEND_HZ;
+const CORRECTION_WARN_DISTANCE = 2;
+const CORRECTION_WARN_INTERVAL_MS = 1000;
 
 function colorForId(id: string): number {
   let hash = 0;
@@ -46,13 +51,13 @@ export class MatchScreen implements Screen {
   private myId: string = "";
   private myColor: number = 0x60ff90;
   private prediction = new Prediction();
-  private hasSnappedCamera: boolean = false;
+  private hasSnappedCamera = false;
 
   private remotes = new Map<string, Interpolation>();
 
   private clientTick = 0;
   private inputSendAccumulator = 0;
-  private readonly INPUT_SEND_INTERVAL = 1 / 30;
+  private lastCorrectionWarnMs = 0;
 
   private _shipPos = new Vector3();
 
@@ -79,11 +84,13 @@ export class MatchScreen implements Screen {
       "pointer-events:none; color:#e8ecf4; font-family:monospace; font-size:0.9em;";
     hud.innerHTML = `
       <div>Sprint 3.5</div>
-      <div style="opacity:0.6;">Click to lock pointer · Space=thrust · B=brake · A/D=yaw · Mouse=pitch · Shift=boost</div>
+      <div style="opacity:0.6;">Click to lock pointer - Space=thrust - B=brake - A/D=yaw - Mouse=pitch - Shift=boost</div>
       <div style="opacity:0.6;" id="hud-info"></div>
+      <div style="opacity:0.6;" id="hud-netcode"></div>
     `;
     wrap.appendChild(hud);
     const info = hud.querySelector("#hud-info") as HTMLDivElement;
+    const netInfo = hud.querySelector("#hud-netcode") as HTMLDivElement;
 
     const platform = detectPlatform();
     this.renderer = new Renderer(wrap, platform);
@@ -97,7 +104,8 @@ export class MatchScreen implements Screen {
     this.chaseCamera = new ChaseCamera(this.renderer.camera);
     this.chaseCamera.setOffset(0, 20, 50);
     this.chaseCamera.setLookAtOffset(0, 8, 0);
-    this.chaseCamera.setSmoothing(0.08, 0.18);
+    this.chaseCamera.setSmoothing(10, 14);
+    this.chaseCamera.setTargetSmoothing(18);
 
     this.router.on(MSG.SNAPSHOT, (payload) => {
       const receivedAtMs = performance.now();
@@ -135,43 +143,36 @@ export class MatchScreen implements Screen {
         }
       }
 
-      info.textContent = `tick ${payload.tick} · ${payload.ships.length} ship(s)`;
+      info.textContent = `tick ${payload.tick} - ${payload.ships.length} ship(s)`;
     });
 
     this.socket.onMessage((msg) => this.router.dispatch(msg));
 
     this.loop = new GameLoop();
     this.loop.add((dt, elapsed) => {
-      const currentInput = {
-        thrust: this.controls.thrust,
-        brake: this.controls.brake,
-        strafe: this.controls.strafe,
-        pitch: this.controls.pitch(dt),
-        boost: this.controls.boost,
-      };
-
       this.inputSendAccumulator += dt;
 
-      while (this.inputSendAccumulator >= this.INPUT_SEND_INTERVAL) {
-        this.inputSendAccumulator -= this.INPUT_SEND_INTERVAL;
+      while (this.inputSendAccumulator >= INPUT_SEND_INTERVAL) {
+        this.inputSendAccumulator -= INPUT_SEND_INTERVAL;
 
+        const input = this.readInput(INPUT_SEND_INTERVAL);
         this.clientTick++;
-        this.prediction.pushInput(this.clientTick, currentInput);
+        this.prediction.pushInput(this.clientTick, input);
+        this.prediction.predictTick(input);
 
         this.socket.send({
           type: MSG.INPUT,
           payload: {
-            ...currentInput,
+            ...input,
             clientTick: this.clientTick,
           },
         });
       }
 
-      this.prediction.applyInput(this.clientTick, currentInput, dt);
       this.prediction.update(dt);
 
       const myView = this.ships.get(this.myId);
-      if (myView) {
+      if (myView && this.prediction.hasSnapshot) {
         myView.applySnapshot({
           x: this.prediction.renderX,
           y: this.prediction.renderY,
@@ -180,16 +181,26 @@ export class MatchScreen implements Screen {
           vy: this.prediction.ship.vy,
           vz: this.prediction.ship.vz,
           heading: this.prediction.renderHeading,
-          pitch: this.prediction.ship.pitch,
-          bank: this.prediction.ship.bank,
+          pitch: this.prediction.renderPitch,
+          bank: this.prediction.renderBank,
           thrustLevel: this.prediction.ship.thrustLevel,
         });
       }
 
       const nowMs = performance.now();
+      let remoteBufferSize = 0;
+      let remoteAgeMs = 0;
+      let remoteHolding = false;
+
       for (const [id, interp] of this.remotes) {
         const sample = interp.sample(nowMs);
         if (!sample) continue;
+
+        const debug = interp.debug;
+        remoteBufferSize = Math.max(remoteBufferSize, debug.bufferSize);
+        remoteAgeMs = Math.max(remoteAgeMs, debug.interpolationAgeMs);
+        remoteHolding = remoteHolding || debug.holdingLatest;
+
         const view = this.ships.get(id);
         if (view) view.applySnapshot(sample);
       }
@@ -198,13 +209,17 @@ export class MatchScreen implements Screen {
         view.update(dt);
       }
 
-      if (this.chaseCamera && this.ships.has(this.myId)) {
+      if (
+        this.chaseCamera &&
+        this.ships.has(this.myId) &&
+        this.prediction.hasSnapshot
+      ) {
         const target = {
           x: this.prediction.renderX,
           y: this.prediction.renderY,
           z: this.prediction.renderZ,
           heading: this.prediction.renderHeading,
-          pitch: this.prediction.ship.pitch,
+          pitch: this.prediction.renderPitch,
         };
         if (!this.hasSnappedCamera) {
           this.chaseCamera.snapTo(target);
@@ -214,7 +229,7 @@ export class MatchScreen implements Screen {
         }
       }
 
-      if (this.boundary) {
+      if (this.boundary && this.prediction.hasSnapshot) {
         this._shipPos.set(
           this.prediction.renderX,
           this.prediction.renderY,
@@ -222,6 +237,9 @@ export class MatchScreen implements Screen {
         );
         this.boundary.update(dt, this._shipPos);
       }
+
+      this.updateNetcodeHud(netInfo, remoteBufferSize, remoteAgeMs, remoteHolding);
+      this.warnOnCorrectionSpike(nowMs);
 
       this.starfield?.update(dt, elapsed);
 
@@ -246,5 +264,45 @@ export class MatchScreen implements Screen {
     this.renderer = null;
     this.chaseCamera = null;
     this.hasSnappedCamera = false;
+  }
+
+  private readInput(dt: number): ShipInput {
+    return {
+      thrust: this.controls.thrust,
+      brake: this.controls.brake,
+      strafe: this.controls.strafe,
+      pitch: this.controls.pitch(dt),
+      boost: this.controls.boost,
+    };
+  }
+
+  private updateNetcodeHud(
+    netInfo: HTMLDivElement,
+    remoteBufferSize: number,
+    remoteAgeMs: number,
+    remoteHolding: boolean,
+  ): void {
+    const debug = this.prediction.debug;
+    netInfo.textContent =
+      `client ${this.clientTick} ack ${debug.lastAckTick} ` +
+      `pending ${debug.pendingInputs} replay ${debug.lastReplayCount} ` +
+      `corr ${debug.lastCorrectionDistance.toFixed(2)} ` +
+      `remoteBuf ${remoteBufferSize} remoteAge ${remoteAgeMs.toFixed(0)}ms ` +
+      `hold ${remoteHolding ? "Y" : "N"}`;
+  }
+
+  private warnOnCorrectionSpike(nowMs: number): void {
+    if (
+      this.prediction.lastCorrectionDistance < CORRECTION_WARN_DISTANCE ||
+      nowMs - this.lastCorrectionWarnMs < CORRECTION_WARN_INTERVAL_MS
+    ) {
+      return;
+    }
+
+    this.lastCorrectionWarnMs = nowMs;
+    console.warn("Prediction correction spike", {
+      clientTick: this.clientTick,
+      ...this.prediction.debug,
+    });
   }
 }

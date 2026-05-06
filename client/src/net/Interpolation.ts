@@ -8,8 +8,19 @@ interface TimedSnapshot {
   snap: ShipSnapshotWire;
 }
 
+export interface InterpolationDebug {
+  bufferSize: number;
+  interpolationAgeMs: number;
+  holdingLatest: boolean;
+}
+
 export class Interpolation {
   private buffer: TimedSnapshot[] = [];
+  private lastDebug: InterpolationDebug = {
+    bufferSize: 0,
+    interpolationAgeMs: 0,
+    holdingLatest: false,
+  };
 
   push(snap: ShipSnapshotWire, receivedAtMs: number): void {
     const last = this.buffer[this.buffer.length - 1];
@@ -24,15 +35,26 @@ export class Interpolation {
   }
 
   sample(nowMs: number): ShipSnapshotWire | null {
+    this.lastDebug = {
+      bufferSize: this.buffer.length,
+      interpolationAgeMs: 0,
+      holdingLatest: false,
+    };
+
     if (this.buffer.length === 0) return null;
 
     const renderTimeMs = nowMs - INTERP_DELAY_MS;
-
     const first = this.buffer[0];
     const last = this.buffer[this.buffer.length - 1];
 
+    this.lastDebug.interpolationAgeMs = Math.max(0, nowMs - last.receivedAtMs);
+
     if (renderTimeMs <= first.receivedAtMs) return first.snap;
-    if (renderTimeMs >= last.receivedAtMs) return last.snap;
+
+    if (renderTimeMs >= last.receivedAtMs) {
+      this.lastDebug.holdingLatest = true;
+      return last.snap;
+    }
 
     for (let i = 0; i < this.buffer.length - 1; i++) {
       const a = this.buffer[i];
@@ -45,7 +67,12 @@ export class Interpolation {
       }
     }
 
+    this.lastDebug.holdingLatest = true;
     return last.snap;
+  }
+
+  get debug(): InterpolationDebug {
+    return this.lastDebug;
   }
 }
 

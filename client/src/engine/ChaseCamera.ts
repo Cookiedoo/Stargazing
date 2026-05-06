@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Vector3, Quaternion, Euler } from 'three';
+import { Euler, PerspectiveCamera, Quaternion, Vector3 } from "three";
 
 export interface ChaseTarget {
   x: number;
@@ -14,11 +14,16 @@ export class ChaseCamera {
   private offset: Vector3 = new Vector3(0, 20, 50);
   private lookAtOffset: Vector3 = new Vector3(0, 8, 0);
 
-  private positionLag: number = 0.08;
-  private lookAtLag: number = 0.18;
+  private positionSharpness = 10;
+  private lookAtSharpness = 14;
+  private targetSharpness = 18;
 
+  private initialized = false;
+
+  private smoothTargetPos: Vector3 = new Vector3();
   private smoothLook: Vector3 = new Vector3();
-  private initialized: boolean = false;
+  private smoothHeading = 0;
+  private smoothPitch = 0;
 
   private _desiredPos: Vector3 = new Vector3();
   private _desiredLook: Vector3 = new Vector3();
@@ -38,9 +43,13 @@ export class ChaseCamera {
     this.lookAtOffset.set(x, y, z);
   }
 
-  setSmoothing(positionLag: number, lookAtLag: number): void {
-    this.positionLag = positionLag;
-    this.lookAtLag = lookAtLag;
+  setSmoothing(positionSharpness: number, lookAtSharpness: number): void {
+    this.positionSharpness = Math.max(0.01, positionSharpness);
+    this.lookAtSharpness = Math.max(0.01, lookAtSharpness);
+  }
+
+  setTargetSmoothing(targetSharpness: number): void {
+    this.targetSharpness = Math.max(0.01, targetSharpness);
   }
 
   reset(): void {
@@ -48,11 +57,19 @@ export class ChaseCamera {
   }
 
   snapTo(target: ChaseTarget): void {
-    this.computeTargetQuat(target);
-    this._targetPos.set(target.x, target.y, target.z);
+    this.smoothTargetPos.set(target.x, target.y, target.z);
+    this.smoothHeading = target.heading;
+    this.smoothPitch = target.pitch;
 
-    this._desiredPos.copy(this.offset).applyQuaternion(this._targetQuat).add(this._targetPos);
-    this._desiredLook.copy(this.lookAtOffset).applyQuaternion(this._targetQuat).add(this._targetPos);
+    this.computeTargetQuat(this.smoothHeading, this.smoothPitch);
+    this._desiredPos
+      .copy(this.offset)
+      .applyQuaternion(this._targetQuat)
+      .add(this.smoothTargetPos);
+    this._desiredLook
+      .copy(this.lookAtOffset)
+      .applyQuaternion(this._targetQuat)
+      .add(this.smoothTargetPos);
 
     this.camera.position.copy(this._desiredPos);
     this.smoothLook.copy(this._desiredLook);
@@ -60,27 +77,49 @@ export class ChaseCamera {
     this.initialized = true;
   }
 
-  update(_dt: number, target: ChaseTarget): void {
-    this.computeTargetQuat(target);
-    this._targetPos.set(target.x, target.y, target.z);
-
-    this._desiredPos.copy(this.offset).applyQuaternion(this._targetQuat).add(this._targetPos);
-    this._desiredLook.copy(this.lookAtOffset).applyQuaternion(this._targetQuat).add(this._targetPos);
-
+  update(dt: number, target: ChaseTarget): void {
     if (!this.initialized) {
-      this.camera.position.copy(this._desiredPos);
-      this.smoothLook.copy(this._desiredLook);
-      this.initialized = true;
-    } else {
-      this.camera.position.lerp(this._desiredPos, this.positionLag);
-      this.smoothLook.lerp(this._desiredLook, this.lookAtLag);
+      this.snapTo(target);
+      return;
     }
 
+    const targetAlpha = dampingAlpha(this.targetSharpness, dt);
+    const positionAlpha = dampingAlpha(this.positionSharpness, dt);
+    const lookAlpha = dampingAlpha(this.lookAtSharpness, dt);
+
+    this._targetPos.set(target.x, target.y, target.z);
+    this.smoothTargetPos.lerp(this._targetPos, targetAlpha);
+    this.smoothHeading += angleDelta(this.smoothHeading, target.heading) * targetAlpha;
+    this.smoothPitch += angleDelta(this.smoothPitch, target.pitch) * targetAlpha;
+
+    this.computeTargetQuat(this.smoothHeading, this.smoothPitch);
+    this._desiredPos
+      .copy(this.offset)
+      .applyQuaternion(this._targetQuat)
+      .add(this.smoothTargetPos);
+    this._desiredLook
+      .copy(this.lookAtOffset)
+      .applyQuaternion(this._targetQuat)
+      .add(this.smoothTargetPos);
+
+    this.camera.position.lerp(this._desiredPos, positionAlpha);
+    this.smoothLook.lerp(this._desiredLook, lookAlpha);
     this.camera.lookAt(this.smoothLook);
   }
 
-  private computeTargetQuat(target: ChaseTarget): void {
-    this._targetEuler.set(target.pitch, target.heading, 0, 'YXZ');
+  private computeTargetQuat(heading: number, pitch: number): void {
+    this._targetEuler.set(pitch, heading, 0, "YXZ");
     this._targetQuat.setFromEuler(this._targetEuler);
   }
+}
+
+function dampingAlpha(sharpness: number, dt: number): number {
+  return 1 - Math.exp(-sharpness * Math.max(0, dt));
+}
+
+function angleDelta(from: number, to: number): number {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
 }

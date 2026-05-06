@@ -1,105 +1,198 @@
 import {
+  NETCODE,
   Ship,
   stepShip,
-  NETCODE,
   type ShipInput,
   type ShipSnapshotWire,
 } from "@stargazing/shared";
+
+const MAX_BUFFERED_INPUTS = 240;
+const CORRECTION_DECAY = 10;
+const RENDER_SMOOTHING = 32;
 
 interface BufferedInput {
   tick: number;
   input: ShipInput;
 }
 
+export interface PredictionDebug {
+  pendingInputs: number;
+  lastAckTick: number;
+  lastCorrectionDistance: number;
+  lastReplayCount: number;
+}
+
 export class Prediction {
   readonly ship: Ship = new Ship();
-  private buffer: BufferedInput[] = [];
 
+  private inputs: BufferedInput[] = [];
   private gotInitialSnapshot = false;
 
-  private errorX = 0;
-  private errorY = 0;
-  private errorZ = 0;
-  private errorHeading = 0;
+  private correctionX = 0;
+  private correctionY = 0;
+  private correctionZ = 0;
+  private correctionHeading = 0;
 
-  private accumulator = 0;
+  private smoothX = 0;
+  private smoothY = 0;
+  private smoothZ = 0;
+  private smoothHeading = 0;
+  private smoothPitch = 0;
+  private smoothBank = 0;
+
+  private lastAckTickValue = 0;
+  private lastCorrectionDistanceValue = 0;
+  private lastReplayCountValue = 0;
+
+  get hasSnapshot(): boolean {
+    return this.gotInitialSnapshot;
+  }
+
+  get pendingInputs(): number {
+    return this.inputs.length;
+  }
+
+  get lastAckTick(): number {
+    return this.lastAckTickValue;
+  }
+
+  get lastCorrectionDistance(): number {
+    return this.lastCorrectionDistanceValue;
+  }
+
+  get lastReplayCount(): number {
+    return this.lastReplayCountValue;
+  }
+
+  get debug(): PredictionDebug {
+    return {
+      pendingInputs: this.pendingInputs,
+      lastAckTick: this.lastAckTick,
+      lastCorrectionDistance: this.lastCorrectionDistance,
+      lastReplayCount: this.lastReplayCount,
+    };
+  }
 
   pushInput(clientTick: number, input: ShipInput): void {
     if (clientTick <= 0) return;
 
-    const last = this.buffer[this.buffer.length - 1];
+    const last = this.inputs[this.inputs.length - 1];
     if (last?.tick === clientTick) {
       last.input = input;
       return;
     }
     if (last && clientTick < last.tick) return;
 
-    this.buffer.push({ tick: clientTick, input });
+    this.inputs.push({ tick: clientTick, input });
 
-    if (this.buffer.length > 240) {
-      this.buffer.shift();
+    if (this.inputs.length > MAX_BUFFERED_INPUTS) {
+      this.inputs.splice(0, this.inputs.length - MAX_BUFFERED_INPUTS);
     }
   }
 
-  applyInput(_clientTick: number, input: ShipInput, dt: number): void {
+  predictTick(input: ShipInput): void {
     if (!this.gotInitialSnapshot) return;
-
-    this.accumulator += dt;
-    const max = NETCODE.TICK_DT * 10;
-    if (this.accumulator > max) this.accumulator = max;
-
-    while (this.accumulator >= NETCODE.TICK_DT) {
-      stepShip(this.ship, input, NETCODE.TICK_DT);
-      this.accumulator -= NETCODE.TICK_DT;
-    }
+    stepShip(this.ship, input, NETCODE.TICK_DT);
   }
 
   applyServerSnapshot(snap: ShipSnapshotWire): void {
     if (!this.gotInitialSnapshot) {
       this.ship.applySnapshot(snap);
+      this.lastAckTickValue = snap.lastInputTick;
+      this.inputs = this.inputs.filter((entry) => entry.tick > snap.lastInputTick);
+
+      for (const entry of this.inputs) {
+        stepShip(this.ship, entry.input, NETCODE.TICK_DT);
+      }
+
+      this.lastReplayCountValue = this.inputs.length;
+      this.seedRenderPose();
       this.gotInitialSnapshot = true;
       return;
     }
 
-    const renderXBefore = this.renderX;
-    const renderYBefore = this.renderY;
-    const renderZBefore = this.renderZ;
-    const renderHeadingBefore = this.renderHeading;
+    const previousRenderX = this.renderX;
+    const previousRenderY = this.renderY;
+    const previousRenderZ = this.renderZ;
+    const previousRenderHeading = this.renderHeading;
 
     this.ship.applySnapshot(snap);
+    this.lastAckTickValue = snap.lastInputTick;
 
-    this.buffer = this.buffer.filter((b) => b.tick > snap.lastInputTick);
+    this.inputs = this.inputs.filter((entry) => entry.tick > snap.lastInputTick);
 
-    for (const entry of this.buffer) {
+    for (const entry of this.inputs) {
       stepShip(this.ship, entry.input, NETCODE.TICK_DT);
     }
 
-    this.errorX = renderXBefore - this.ship.x;
-    this.errorY = renderYBefore - this.ship.y;
-    this.errorZ = renderZBefore - this.ship.z;
-    this.errorHeading = angleDelta(this.ship.heading, renderHeadingBefore);
+    this.lastReplayCountValue = this.inputs.length;
+
+    this.correctionX = previousRenderX - this.ship.x;
+    this.correctionY = previousRenderY - this.ship.y;
+    this.correctionZ = previousRenderZ - this.ship.z;
+    this.correctionHeading = angleDelta(this.ship.heading, previousRenderHeading);
+
+    this.lastCorrectionDistanceValue = Math.sqrt(
+      this.correctionX * this.correctionX +
+        this.correctionY * this.correctionY +
+        this.correctionZ * this.correctionZ,
+    );
   }
 
   update(dt: number): void {
-    const decay = Math.exp(-8 * dt);
+    if (!this.gotInitialSnapshot) return;
 
-    this.errorX *= decay;
-    this.errorY *= decay;
-    this.errorZ *= decay;
-    this.errorHeading *= decay;
+    const correctionAlpha = 1 - Math.exp(-CORRECTION_DECAY * dt);
+    this.correctionX += (0 - this.correctionX) * correctionAlpha;
+    this.correctionY += (0 - this.correctionY) * correctionAlpha;
+    this.correctionZ += (0 - this.correctionZ) * correctionAlpha;
+    this.correctionHeading += (0 - this.correctionHeading) * correctionAlpha;
+
+    const targetX = this.ship.x + this.correctionX;
+    const targetY = this.ship.y + this.correctionY;
+    const targetZ = this.ship.z + this.correctionZ;
+    const targetHeading = this.ship.heading + this.correctionHeading;
+
+    const renderAlpha = 1 - Math.exp(-RENDER_SMOOTHING * dt);
+    this.smoothX += (targetX - this.smoothX) * renderAlpha;
+    this.smoothY += (targetY - this.smoothY) * renderAlpha;
+    this.smoothZ += (targetZ - this.smoothZ) * renderAlpha;
+    this.smoothHeading += angleDelta(this.smoothHeading, targetHeading) * renderAlpha;
+    this.smoothPitch += angleDelta(this.smoothPitch, this.ship.pitch) * renderAlpha;
+    this.smoothBank += angleDelta(this.smoothBank, this.ship.bank) * renderAlpha;
+  }
+
+  private seedRenderPose(): void {
+    this.smoothX = this.ship.x;
+    this.smoothY = this.ship.y;
+    this.smoothZ = this.ship.z;
+    this.smoothHeading = this.ship.heading;
+    this.smoothPitch = this.ship.pitch;
+    this.smoothBank = this.ship.bank;
   }
 
   get renderX(): number {
-    return this.ship.x + this.errorX;
+    return this.smoothX;
   }
+
   get renderY(): number {
-    return this.ship.y + this.errorY;
+    return this.smoothY;
   }
+
   get renderZ(): number {
-    return this.ship.z + this.errorZ;
+    return this.smoothZ;
   }
+
   get renderHeading(): number {
-    return this.ship.heading + this.errorHeading;
+    return this.smoothHeading;
+  }
+
+  get renderPitch(): number {
+    return this.smoothPitch;
+  }
+
+  get renderBank(): number {
+    return this.smoothBank;
   }
 }
 
