@@ -10,7 +10,7 @@ interface PlayerConnection {
 }
 
 const SNAPSHOT_RATE_HZ = 20;
-const TICKS_PER_SNAPSHOT = Math.round(1 / SNAPSHOT_RATE_HZ / TICK_DT);
+const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE_HZ;
 
 export class GameRoom {
   private state: DurableObjectState;
@@ -18,14 +18,20 @@ export class GameRoom {
   private players = new Map<string, PlayerConnection>();
   private sim = new Simulation();
 
-  private tickInterval: ReturnType<typeof setInterval> | null = null;
-  private ticksSinceSnapshot = 0;
+  private running = false;
+  private lastFrameTime = 0;
+  private tickAccumulator = 0;
+  private snapshotAccumulator = 0;
 
   constructor(state: DurableObjectState, _env: Env) {
     this.state = state;
+
     this.state.blockConcurrencyWhile(async () => {
       const stored = await this.state.storage.get<string>("code");
-      if (stored) this.code = stored;
+
+      if (stored) {
+        this.code = stored;
+      }
     });
   }
 
@@ -34,25 +40,36 @@ export class GameRoom {
 
     if (url.pathname === "/init" && request.method === "POST") {
       const body = await request.json<{ code: string }>();
+
       this.code = body.code;
+
       await this.state.storage.put("code", body.code);
+
       return new Response("ok");
     }
 
     if (request.headers.get("Upgrade") === "websocket") {
-      return this.handleJoin(request);
+      return this.handleJoin();
     }
 
     return new Response("Not found", { status: 404 });
   }
 
-  private handleJoin(_request: Request): Response {
+  private handleJoin(): Response {
     const pair = new WebSocketPair();
-    const [client, server] = [pair[0], pair[1]];
+
+    const client = pair[0];
+    const server = pair[1];
+
     server.accept();
 
     const playerId = crypto.randomUUID().slice(0, 8);
-    this.players.set(playerId, { id: playerId, socket: server });
+
+    this.players.set(playerId, {
+      id: playerId,
+      socket: server,
+    });
+
     this.sim.addPlayer(playerId);
 
     this.send(server, {
@@ -65,7 +82,10 @@ export class GameRoom {
     });
 
     this.broadcast(
-      { type: MSG.PLAYER_JOINED, payload: { id: playerId } },
+      {
+        type: MSG.PLAYER_JOINED,
+        payload: { id: playerId },
+      },
       playerId,
     );
 
@@ -76,42 +96,80 @@ export class GameRoom {
     server.addEventListener("close", () => {
       this.players.delete(playerId);
       this.sim.removePlayer(playerId);
-      this.broadcast({ type: MSG.PLAYER_LEFT, payload: { id: playerId } });
-      if (this.players.size === 0) this.stopTick();
+
+      this.broadcast({
+        type: MSG.PLAYER_LEFT,
+        payload: { id: playerId },
+      });
+
+      if (this.players.size === 0) {
+        this.running = false;
+      }
     });
 
     server.addEventListener("error", () => {
       this.players.delete(playerId);
       this.sim.removePlayer(playerId);
-      if (this.players.size === 0) this.stopTick();
+
+      if (this.players.size === 0) {
+        this.running = false;
+      }
     });
 
-    this.startTick();
+    this.startLoop();
 
-    return new Response(null, { status: 101, webSocket: client });
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+    });
   }
 
-  private startTick(): void {
-    if (this.tickInterval !== null) return;
-    this.tickInterval = setInterval(() => {
-      this.sim.step();
-      this.ticksSinceSnapshot++;
-      if (this.ticksSinceSnapshot >= TICKS_PER_SNAPSHOT) {
-        this.ticksSinceSnapshot = 0;
+  private startLoop(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.running = true;
+
+    this.lastFrameTime = performance.now();
+
+    const frame = () => {
+      if (!this.running) {
+        return;
+      }
+
+      const now = performance.now();
+
+      let dt = (now - this.lastFrameTime) / 1000;
+
+      this.lastFrameTime = now;
+
+      if (dt > 0.25) {
+        dt = 0.25;
+      }
+
+      this.tickAccumulator += dt;
+      this.snapshotAccumulator += dt;
+
+      while (this.tickAccumulator >= TICK_DT) {
+        this.sim.step();
+        this.tickAccumulator -= TICK_DT;
+      }
+
+      if (this.snapshotAccumulator >= SNAPSHOT_INTERVAL) {
+        this.snapshotAccumulator -= SNAPSHOT_INTERVAL;
         this.broadcastSnapshot();
       }
-    }, TICK_DT * 1000);
-  }
 
-  private stopTick(): void {
-    if (this.tickInterval !== null) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
-    }
+      setTimeout(frame, 0);
+    };
+
+    frame();
   }
 
   private broadcastSnapshot(): void {
     const snap = this.sim.buildSnapshot();
+
     this.broadcast({
       type: MSG.SNAPSHOT,
       payload: snap,
@@ -120,6 +178,7 @@ export class GameRoom {
 
   private onMessage(fromId: string, raw: ArrayBuffer | string): void {
     let msg: ClientMessage;
+
     try {
       msg = JSON.parse(
         typeof raw === "string" ? raw : new TextDecoder().decode(raw),
@@ -132,9 +191,13 @@ export class GameRoom {
       case MSG.HELLO:
         this.broadcast({
           type: MSG.HELLO,
-          payload: { text: msg.payload.text, from: fromId },
+          payload: {
+            text: msg.payload.text,
+            from: fromId,
+          },
         });
         break;
+
       case MSG.INPUT:
         this.sim.receiveInput(
           fromId,
@@ -148,6 +211,7 @@ export class GameRoom {
           msg.payload.clientTick,
         );
         break;
+
       default:
         break;
     }
@@ -159,13 +223,15 @@ export class GameRoom {
 
   private broadcast(msg: ServerMessage, exceptId?: string): void {
     const data = JSON.stringify(msg);
+
     for (const [id, conn] of this.players) {
-      if (id === exceptId) continue;
+      if (id === exceptId) {
+        continue;
+      }
+
       try {
         conn.socket.send(data);
-      } catch {
-        // dead conn; cleanup happens via close event
-      }
+      } catch {}
     }
   }
 }

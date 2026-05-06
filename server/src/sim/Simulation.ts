@@ -79,7 +79,7 @@ export class Simulation {
 
     return {
       tick: this.state.tick,
-      serverTimeMs: this.state.tick,
+      serverTimeMs: Date.now(),
       ships,
     };
   }
