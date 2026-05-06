@@ -1,6 +1,7 @@
 export const WORDS: readonly string[] = [
   "aero",
-  "aide",
+  "art",
+  "aid",
   "airy",
   "alto",
   "apex",
@@ -17,6 +18,7 @@ export const WORDS: readonly string[] = [
   "azure",
   "badge",
   "bison",
+  "bravo",
   "bloom",
   "beam",
   "belt",
@@ -42,6 +44,7 @@ export const WORDS: readonly string[] = [
   "dawn",
   "delta",
   "dome",
+  "doom",
   "dune",
   "dust",
   "dusk",
@@ -75,6 +78,7 @@ export const WORDS: readonly string[] = [
   "ions",
   "iris",
   "ivory",
+  "irony",
   "jade",
   "jets",
   "keel",
@@ -168,4 +172,8 @@ export const WORDS: readonly string[] = [
   "zeta",
   "zinc",
   "zone",
+  "zap",
+  "zoom",
+  "zant",
+  
 ];

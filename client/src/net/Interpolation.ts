@@ -1,94 +1,49 @@
 import type { ShipSnapshotWire } from "@stargazing/shared";
 
-const INTERP_DELAY_MS = 100;
-const MAX_BUFFER_AGE_MS = 1000;
-const MAX_EXTRAPOLATION_MS = 100;
+const INTERP_DELAY_TICKS = 3;
+const MAX_BUFFER_TICKS = 60;
 
 interface TimedSnapshot {
-  receivedAt: number;
+  tick: number;
   snap: ShipSnapshotWire;
 }
 
 export class Interpolation {
   private buffer: TimedSnapshot[] = [];
+  private latestServerTick = 0;
 
-  push(
-    snap: ShipSnapshotWire,
-    _serverTimeMs: number,
-    receivedAt: number,
-  ): void {
+  push(snap: ShipSnapshotWire, serverTick: number): void {
+    this.latestServerTick = Math.max(this.latestServerTick, serverTick);
+
     const last = this.buffer[this.buffer.length - 1];
+    if (last && serverTick <= last.tick) return;
 
-    if (last && receivedAt <= last.receivedAt) {
-      return;
-    }
+    this.buffer.push({ tick: serverTick, snap });
 
-    this.buffer.push({
-      receivedAt,
-      snap,
-    });
-
-    const cutoff = receivedAt - MAX_BUFFER_AGE_MS;
-
-    while (
-      this.buffer.length > 0 &&
-      this.buffer[0].receivedAt < cutoff
-    ) {
+    const cutoff = serverTick - MAX_BUFFER_TICKS;
+    while (this.buffer.length && this.buffer[0].tick < cutoff) {
       this.buffer.shift();
     }
   }
 
-  sample(now: number): ShipSnapshotWire | null {
-    if (this.buffer.length === 0) {
-      return null;
-    }
+  sample(): ShipSnapshotWire | null {
+    if (this.buffer.length === 0) return null;
 
-    if (this.buffer.length === 1) {
-      return this.buffer[0].snap;
-    }
-
-    const renderTime = now - INTERP_DELAY_MS;
+    const renderTick = this.latestServerTick - INTERP_DELAY_TICKS;
 
     const first = this.buffer[0];
-
-    if (renderTime <= first.receivedAt) {
-      return first.snap;
-    }
-
     const last = this.buffer[this.buffer.length - 1];
 
-    if (renderTime >= last.receivedAt) {
-      const stallMs = renderTime - last.receivedAt;
-
-      if (stallMs > MAX_EXTRAPOLATION_MS) {
-        return last.snap;
-      }
-
-      const dt = stallMs / 1000;
-
-      return {
-        ...last.snap,
-        x: last.snap.x + last.snap.vx * dt,
-        y: last.snap.y + last.snap.vy * dt,
-        z: last.snap.z + last.snap.vz * dt,
-      };
-    }
+    if (renderTick <= first.tick) return first.snap;
+    if (renderTick >= last.tick) return last.snap;
 
     for (let i = 0; i < this.buffer.length - 1; i++) {
       const a = this.buffer[i];
       const b = this.buffer[i + 1];
 
-      if (
-        a.receivedAt <= renderTime &&
-        b.receivedAt >= renderTime
-      ) {
-        const span = b.receivedAt - a.receivedAt;
-
-        const t =
-          span > 0
-            ? (renderTime - a.receivedAt) / span
-            : 0;
-
+      if (a.tick <= renderTick && b.tick >= renderTick) {
+        const span = b.tick - a.tick;
+        const t = span > 0 ? (renderTick - a.tick) / span : 0;
         return lerpSnap(a.snap, b.snap, t);
       }
     }
@@ -113,23 +68,14 @@ function lerpSnap(
     heading: lerpAngle(a.heading, b.heading, t),
     pitch: lerpAngle(a.pitch, b.pitch, t),
     bank: lerpAngle(a.bank, b.bank, t),
-    thrustLevel:
-      a.thrustLevel +
-      (b.thrustLevel - a.thrustLevel) * t,
+    thrustLevel: a.thrustLevel + (b.thrustLevel - a.thrustLevel) * t,
     lastInputTick: b.lastInputTick,
   };
 }
 
 function lerpAngle(a: number, b: number, t: number): number {
-  let diff = b - a;
-
-  while (diff > Math.PI) {
-    diff -= Math.PI * 2;
-  }
-
-  while (diff < -Math.PI) {
-    diff += Math.PI * 2;
-  }
-
-  return a + diff * t;
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
 }

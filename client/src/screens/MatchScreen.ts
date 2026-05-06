@@ -100,7 +100,6 @@ export class MatchScreen implements Screen {
     this.chaseCamera.setSmoothing(0.08, 0.18);
 
     this.router.on(MSG.SNAPSHOT, (payload) => {
-      const now = performance.now();
       const presentIds = new Set<string>();
 
       for (const shipSnap of payload.ships) {
@@ -123,7 +122,7 @@ export class MatchScreen implements Screen {
             interp = new Interpolation();
             this.remotes.set(shipSnap.id, interp);
           }
-          interp.push(shipSnap, payload.serverTimeMs, now);
+          interp.push(shipSnap, payload.serverTimeMs);
         }
       }
 
@@ -185,9 +184,8 @@ export class MatchScreen implements Screen {
         });
       }
 
-      const now = performance.now();
       for (const [id, interp] of this.remotes) {
-        const sample = interp.sample(now);
+        const sample = interp.sample();
         if (!sample) continue;
         const view = this.ships.get(id);
         if (view) view.applySnapshot(sample);

@@ -6,62 +6,43 @@ import {
   type ShipSnapshotWire,
 } from "@stargazing/shared";
 
-import { InputBuffer } from "./InputBuffer.js";
-
-function angleDelta(a: number, b: number): number {
-  let diff = a - b;
-
-  while (diff > Math.PI) {
-    diff -= Math.PI * 2;
-  }
-
-  while (diff < -Math.PI) {
-    diff += Math.PI * 2;
-  }
-
-  return diff;
+interface BufferedInput {
+  tick: number;
+  input: ShipInput;
 }
 
 export class Prediction {
   readonly ship: Ship = new Ship();
-
-  private buffer: InputBuffer = new InputBuffer();
+  private buffer: BufferedInput[] = [];
 
   private gotInitialSnapshot = false;
-
-  private accumulator = 0;
 
   private errorX = 0;
   private errorY = 0;
   private errorZ = 0;
   private errorHeading = 0;
 
-  applyInput(
-    clientTick: number,
-    input: ShipInput,
-    dt: number,
-  ): void {
-    if (!this.gotInitialSnapshot) {
-      return;
+  private accumulator = 0;
+
+  pushInput(clientTick: number, input: ShipInput): void {
+    this.buffer.push({ tick: clientTick, input });
+
+    if (this.buffer.length > 240) {
+      this.buffer.shift();
     }
+  }
+
+  applyInput(clientTick: number, input: ShipInput, dt: number): void {
+    if (!this.gotInitialSnapshot) return;
+
+    this.pushInput(clientTick, input);
 
     this.accumulator += dt;
-
-    const maxAccumulator = NETCODE.TICK_DT * 10;
-
-    if (this.accumulator > maxAccumulator) {
-      this.accumulator = maxAccumulator;
-    }
+    const max = NETCODE.TICK_DT * 10;
+    if (this.accumulator > max) this.accumulator = max;
 
     while (this.accumulator >= NETCODE.TICK_DT) {
       stepShip(this.ship, input, NETCODE.TICK_DT);
-
-      this.buffer.push(
-        clientTick,
-        input,
-        NETCODE.TICK_DT,
-      );
-
       this.accumulator -= NETCODE.TICK_DT;
     }
   }
@@ -73,49 +54,49 @@ export class Prediction {
       return;
     }
 
-    const predictedX = this.ship.x;
-    const predictedY = this.ship.y;
-    const predictedZ = this.ship.z;
-    const predictedHeading = this.ship.heading;
-
     this.ship.applySnapshot(snap);
 
-    this.buffer.ackUpTo(snap.lastInputTick);
+    this.buffer = this.buffer.filter((b) => b.tick > snap.lastInputTick);
 
-    for (const entry of this.buffer.all()) {
-      stepShip(this.ship, entry.input, entry.dt);
+    const tmp = new Ship();
+
+    tmp.applySnapshot(snap);
+
+    for (const entry of this.buffer) {
+      stepShip(tmp, entry.input, NETCODE.TICK_DT);
     }
 
-    this.errorX = predictedX - this.ship.x;
-    this.errorY = predictedY - this.ship.y;
-    this.errorZ = predictedZ - this.ship.z;
-    this.errorHeading = angleDelta(
-      predictedHeading,
-      this.ship.heading,
-    );
+    const dx = tmp.x - this.ship.x;
+    const dy = tmp.y - this.ship.y;
+    const dz = tmp.z - this.ship.z;
+    const dh = tmp.heading - this.ship.heading;
+
+    const alpha = 0.12;
+
+    this.errorX += dx * alpha;
+    this.errorY += dy * alpha;
+    this.errorZ += dz * alpha;
+    this.errorHeading += dh * alpha;
   }
 
   update(dt: number): void {
-    const correction = Math.min(1, dt * 12);
+    const decay = Math.exp(-8 * dt);
 
-    this.errorX *= 1 - correction;
-    this.errorY *= 1 - correction;
-    this.errorZ *= 1 - correction;
-    this.errorHeading *= 1 - correction;
+    this.errorX *= decay;
+    this.errorY *= decay;
+    this.errorZ *= decay;
+    this.errorHeading *= decay;
   }
 
   get renderX(): number {
     return this.ship.x + this.errorX;
   }
-
   get renderY(): number {
     return this.ship.y + this.errorY;
   }
-
   get renderZ(): number {
     return this.ship.z + this.errorZ;
   }
-
   get renderHeading(): number {
     return this.ship.heading + this.errorHeading;
   }

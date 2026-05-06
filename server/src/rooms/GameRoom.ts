@@ -172,10 +172,13 @@ export class GameRoom {
 
     this.broadcast({
       type: MSG.SNAPSHOT,
-      payload: snap,
+      payload: {
+        tick: snap.tick,
+        serverTimeMs: Date.now(),
+        ships: snap.ships,
+      },
     });
   }
-
   private onMessage(fromId: string, raw: ArrayBuffer | string): void {
     let msg: ClientMessage;
 

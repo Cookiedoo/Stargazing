@@ -58,31 +58,31 @@ export class Simulation {
   }
 
   buildSnapshot() {
-    const ships = [];
+  const ships = [];
 
-    for (const [id, ship] of this.state.ships) {
-      ships.push({
-        id,
-        x: ship.x,
-        y: ship.y,
-        z: ship.z,
-        vx: ship.vx,
-        vy: ship.vy,
-        vz: ship.vz,
-        heading: ship.heading,
-        pitch: ship.pitch,
-        bank: ship.bank,
-        thrustLevel: ship.thrustLevel,
-        lastInputTick: this.lastInputTick.get(id) ?? 0,
-      });
-    }
-
-    return {
-      tick: this.state.tick,
-      serverTimeMs: Date.now(),
-      ships,
-    };
+  for (const [id, ship] of this.state.ships) {
+    ships.push({
+      id,
+      x: ship.x,
+      y: ship.y,
+      z: ship.z,
+      vx: ship.vx,
+      vy: ship.vy,
+      vz: ship.vz,
+      heading: ship.heading,
+      pitch: ship.pitch,
+      bank: ship.bank,
+      thrustLevel: ship.thrustLevel,
+      lastInputTick: this.lastInputTick.get(id) ?? 0,
+    });
   }
+
+  return {
+    tick: this.state.tick,
+    serverTick: this.state.tick,
+    ships,
+  };
+}
 
   private zeroInput(): ShipInput {
     return {
