@@ -56,6 +56,7 @@ export class MatchScreen implements Screen {
   private remotes = new Map<string, Interpolation>();
 
   private clientTick = 0;
+  private latestServerTick = 0;
   private inputSendAccumulator = 0;
   private lastCorrectionWarnMs = 0;
 
@@ -111,6 +112,8 @@ export class MatchScreen implements Screen {
       const receivedAtMs = performance.now();
       const presentIds = new Set<string>();
 
+      this.latestServerTick = payload.tick;
+
       for (const shipSnap of payload.ships) {
         presentIds.add(shipSnap.id);
 
@@ -143,7 +146,7 @@ export class MatchScreen implements Screen {
         }
       }
 
-      info.textContent = `tick ${payload.tick} - ${payload.ships.length} ship(s)`;
+      info.textContent = `server ${payload.tick} - ${payload.ships.length} ship(s)`;
     });
 
     this.socket.onMessage((msg) => this.router.dispatch(msg));
@@ -283,10 +286,15 @@ export class MatchScreen implements Screen {
     remoteHolding: boolean,
   ): void {
     const debug = this.prediction.debug;
+    const inputGap = this.clientTick - debug.lastAckTick;
+
     netInfo.textContent =
-      `client ${this.clientTick} ack ${debug.lastAckTick} ` +
+      `server ${this.latestServerTick} client ${this.clientTick} ` +
+      `ack ${debug.lastAckTick} gap ${inputGap} ` +
       `pending ${debug.pendingInputs} replay ${debug.lastReplayCount} ` +
       `corr ${debug.lastCorrectionDistance.toFixed(2)} ` +
+      `visual ${debug.lastVisualCorrectionDistance.toFixed(2)} ` +
+      `dead ${debug.correctionSuppressed ? "Y" : "N"} ` +
       `remoteBuf ${remoteBufferSize} remoteAge ${remoteAgeMs.toFixed(0)}ms ` +
       `hold ${remoteHolding ? "Y" : "N"}`;
   }
@@ -302,6 +310,7 @@ export class MatchScreen implements Screen {
     this.lastCorrectionWarnMs = nowMs;
     console.warn("Prediction correction spike", {
       clientTick: this.clientTick,
+      serverTick: this.latestServerTick,
       ...this.prediction.debug,
     });
   }
