@@ -1,20 +1,22 @@
 import {
   ACESFilmicToneMapping,
-  BoxGeometry,
   Color,
   DirectionalLight,
   Group,
+  IcosahedronGeometry,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
-  SphereGeometry,
   SRGBColorSpace,
   WebGLRenderer,
 } from "three";
 import { assets } from "../engine/assetLoader.js";
 import { DefaultSpaceScene } from "./DefaultSpaceScene.js";
 import { DEBUG } from "@stargazing/shared";
+
+const ROCKET_BASE_Y = -4.5;
+const ASTRONAUT_BASE_Y = 0;
 
 export class TitleSceneView {
   private renderer: WebGLRenderer;
@@ -25,7 +27,7 @@ export class TitleSceneView {
   private space: DefaultSpaceScene;
   private foreground: Group;
   private rocketRoot: Group;
-  private placeholderRoot: Group;
+  private astronautRoot: Group;
   private surface: Mesh;
 
   private elapsed: number = 0;
@@ -64,7 +66,20 @@ export class TitleSceneView {
     this.foreground = new Group();
     this.scene.add(this.foreground);
 
-    const surfaceGeo = new SphereGeometry(35, 8, 8);
+    const surfaceGeo = new IcosahedronGeometry(34, 2);
+    const surfacePositions = surfaceGeo.attributes.position;
+    for (let i = 0; i < surfacePositions.count; i++) {
+      const x = surfacePositions.getX(i);
+      const y = surfacePositions.getY(i);
+      const z = surfacePositions.getZ(i);
+      const noise =
+        (Math.sin(x * 0.5) + Math.cos(z * 0.5) + Math.sin(y * 0.7)) * 0.6;
+      const len = Math.sqrt(x * x + y * y + z * z);
+      const factor = (len + noise) / len;
+      surfacePositions.setXYZ(i, x * factor, y * factor, z * factor);
+    }
+    surfacePositions.needsUpdate = true;
+
     const surfaceMat = new MeshStandardMaterial({
       color: 0x4a5a8a,
       emissive: 0x101830,
@@ -74,20 +89,22 @@ export class TitleSceneView {
       flatShading: true,
     });
     this.surface = new Mesh(surfaceGeo, surfaceMat);
-    this.surface.position.set(0, -30, 0);
+    this.surface.position.set(0, -35.5, 0);
     this.foreground.add(this.surface);
 
     this.rocketRoot = new Group();
-    this.rocketRoot.position.set(0, -2, 0);
+    this.rocketRoot.position.set(-5, ROCKET_BASE_Y, 0);
     this.rocketRoot.scale.setScalar(1.5);
     this.foreground.add(this.rocketRoot);
 
-    this.placeholderRoot = new Group();
-    this.placeholderRoot.position.set(2.6, -3, 0.5);
-    this.foreground.add(this.placeholderRoot);
+    this.astronautRoot = new Group();
+    this.astronautRoot.position.set(-3, ASTRONAUT_BASE_Y, 1);
+    this.astronautRoot.scale.setScalar(0.5);
+    this.astronautRoot.rotation.set(0, 0.1, 0);
+    this.foreground.add(this.astronautRoot);
 
     this.loadRocket();
-    this.buildAstronautPlaceholder();
+    this.loadAstronaut();
 
     this.handleResize();
     this.resizeObserver = new ResizeObserver(() => this.handleResize());
@@ -118,44 +135,24 @@ export class TitleSceneView {
     }
   }
 
-  // PLACEHOLDER for Astronaut.glb. Replace with assets.loadGLB('Astronaut.glb') when model is exported into client/public/.
-  private buildAstronautPlaceholder(): void {
-    const bodyGeo = new BoxGeometry(0.7, 1.2, 0.6);
-    const bodyMat = new MeshStandardMaterial({
-      color: 0xc4d0e8,
-      metalness: 0.2,
-      roughness: 0.6,
-    });
-    const body = new Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.6;
-    this.placeholderRoot.add(body);
-
-    const headGeo = new SphereGeometry(0.32, 16, 16);
-    const headMat = new MeshStandardMaterial({
-      color: 0xc4d0e8,
-      metalness: 0.3,
-      roughness: 0.4,
-    });
-    const head = new Mesh(headGeo, headMat);
-    head.position.y = 1.5;
-    this.placeholderRoot.add(head);
-
-    const visorGeo = new BoxGeometry(0.4, 0.3, 0.05);
-    const visorMat = new MeshStandardMaterial({
-      color: 0x1a1010,
-      emissive: 0x6040a0,
-      emissiveIntensity: 0.5,
-    });
-    const visor = new Mesh(visorGeo, visorMat);
-    visor.position.set(0, 1.5, 0.28);
-    this.placeholderRoot.add(visor);
+  private async loadAstronaut(): Promise<void> {
+    try {
+      const model = await assets.loadGLB(
+        `${import.meta.env.BASE_URL}AstronautMkI.glb`,
+      );
+      this.astronautRoot.add(model);
+    } catch (err) {
+      console.error("TitleSceneView: failed to load AstronautMkI.glb", err);
+    }
   }
 
   update(dt: number): void {
     this.elapsed += dt;
     this.space.update(dt);
-    this.rocketRoot.position.y = -1.5 + Math.sin(this.elapsed * 0.4) * 0.08;
-    this.placeholderRoot.position.y = Math.sin(this.elapsed * 0.5 + 1) * 0.05;
+    this.rocketRoot.position.y =
+      ROCKET_BASE_Y + Math.sin(this.elapsed * 0.4) * 0.08;
+    this.astronautRoot.position.y =
+      ASTRONAUT_BASE_Y + Math.sin(this.elapsed * 0.5 + 1) * 0.05;
     this.renderer.render(this.scene, this.camera);
   }
 
