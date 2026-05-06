@@ -1,6 +1,6 @@
 import type { ShipSnapshotWire } from "@stargazing/shared";
 
-const INTERP_DELAY_MS = 100;
+const INTERP_DELAY_MS = 150;
 const MAX_BUFFER_AGE_MS = 1000;
 const MAX_EXTRAPOLATION_MS = 200;
 
