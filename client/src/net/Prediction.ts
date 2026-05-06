@@ -1,6 +1,7 @@
 import {
   Ship,
   stepShip,
+  NETCODE,
   type ShipInput,
   type ShipSnapshotWire,
 } from "@stargazing/shared";
@@ -10,6 +11,7 @@ export class Prediction {
   readonly ship: Ship = new Ship();
   private buffer: InputBuffer = new InputBuffer();
   private gotInitialSnapshot = false;
+  private accumulator = 0;
   private errorX = 0;
   private errorY = 0;
   private errorZ = 0;
@@ -17,8 +19,14 @@ export class Prediction {
 
   applyInput(clientTick: number, input: ShipInput, dt: number): void {
     if (!this.gotInitialSnapshot) return;
-    stepShip(this.ship, input, dt);
-    this.buffer.push(clientTick, input, dt);
+    this.accumulator += dt;
+    const maxAccumulator = NETCODE.TICK_DT * 10;
+    if (this.accumulator > maxAccumulator) this.accumulator = maxAccumulator;
+    while (this.accumulator >= NETCODE.TICK_DT) {
+      stepShip(this.ship, input, NETCODE.TICK_DT);
+      this.buffer.push(clientTick, input, NETCODE.TICK_DT);
+      this.accumulator -= NETCODE.TICK_DT;
+    }
   }
 
   applyServerSnapshot(snap: ShipSnapshotWire): void {
@@ -54,8 +62,16 @@ export class Prediction {
     this.errorHeading *= 1 - decay;
   }
 
-  get renderX(): number { return this.ship.x + this.errorX; }
-  get renderY(): number { return this.ship.y + this.errorY; }
-  get renderZ(): number { return this.ship.z + this.errorZ; }
-  get renderHeading(): number { return this.ship.heading + this.errorHeading; }
+  get renderX(): number {
+    return this.ship.x + this.errorX;
+  }
+  get renderY(): number {
+    return this.ship.y + this.errorY;
+  }
+  get renderZ(): number {
+    return this.ship.z + this.errorZ;
+  }
+  get renderHeading(): number {
+    return this.ship.heading + this.errorHeading;
+  }
 }

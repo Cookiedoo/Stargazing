@@ -13,3 +13,7 @@ class_name = "GameRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameRoom"]
+
+[[hyperdrive]]
+binding = "DB"
+id = "de88cd2294304eab815ac812a3fa94a0"

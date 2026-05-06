@@ -12,7 +12,7 @@ export const SHIP = {
   EXHAUST_MAX: 75,
   MAX_SPEED_FOR_EXHAUST: 800,
 
-  SPAWN_RADIUS: 10,
+  SPAWN_RADIUS: 7500,
   SPAWN_Y: 0,
 } as const;
 
@@ -24,6 +24,19 @@ export const MAP = {
   BOUNDARY_FORCE: 150,
 } as const;
 
+export const NETCODE = {
+  TICK_HZ: 30,
+  TICK_DT: 1 / 30,
+  INTERPOLATION_DELAY_MS: 100,
+} as const;
+
+export const UI = {
+  STARTING_LEVEL: 4,
+  STARTING_XP: 320,
+  XP_PER_LEVEL: 1000,
+  STARTING_COINS: 1250,
+} as const;
+
 export const DEBUG = {
-  PLAYER_GLOW: true,
+  PLAYER_GLOW: false,
 } as const;
