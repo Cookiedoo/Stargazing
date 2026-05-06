@@ -64,16 +64,17 @@ export class TitleSceneView {
     this.foreground = new Group();
     this.scene.add(this.foreground);
 
-    const surfaceGeo = new SphereGeometry(35, 64, 64);
+    const surfaceGeo = new SphereGeometry(35, 8, 8);
     const surfaceMat = new MeshStandardMaterial({
       color: 0x4a5a8a,
       emissive: 0x101830,
       emissiveIntensity: 0.2,
       roughness: 0.85,
       metalness: 0.1,
+      flatShading: true,
     });
     this.surface = new Mesh(surfaceGeo, surfaceMat);
-    this.surface.position.set(0, -38, 0);
+    this.surface.position.set(0, -30, 0);
     this.foreground.add(this.surface);
 
     this.rocketRoot = new Group();
