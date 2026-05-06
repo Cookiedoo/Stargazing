@@ -39,7 +39,6 @@ export class Interpolation {
 
     const renderServerTime = nowLocalMs - this.clockOffsetMs - INTERP_DELAY_MS;
 
-    // Warmup: renderTime is before all buffered snaps. Hold the first.
     if (renderServerTime <= this.buffer[0].serverTimeMs) {
       return this.buffer[0].snap;
     }

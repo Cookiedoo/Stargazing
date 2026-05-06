@@ -71,7 +71,7 @@ export class Simulation {
     }
     return {
       tick: this.state.tick,
-      serverTimeMs: this.state.tick * TICK_DT * 1000,
+      serverTimeMs: Date.now(),
       ships,
     };
   }
