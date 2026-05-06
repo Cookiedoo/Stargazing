@@ -123,7 +123,7 @@ export class MatchScreen implements Screen {
             interp = new Interpolation();
             this.remotes.set(shipSnap.id, interp);
           }
-          interp.push(shipSnap, now);
+          interp.push(shipSnap, payload.serverTimeMs, now);
         }
       }
 

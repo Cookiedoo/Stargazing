@@ -44,6 +44,7 @@ export type SnapshotMessage = Envelope<
   {
     tick: number;
     ships: ShipSnapshotWire[];
+    serverTimeMs: number;
   }
 >;
 

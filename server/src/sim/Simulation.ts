@@ -1,7 +1,10 @@
 import {
-  GameState, Ship, stepShip, applyBoundary,
+  GameState,
+  Ship,
+  stepShip,
+  applyBoundary,
   type ShipInput,
-} from '@stargazing/shared';
+} from "@stargazing/shared";
 
 const TICK_RATE_HZ = 30;
 export const TICK_DT = 1 / TICK_RATE_HZ;
@@ -53,8 +56,12 @@ export class Simulation {
     for (const [id, ship] of this.state.ships) {
       ships.push({
         id,
-        x: ship.x, y: ship.y, z: ship.z,
-        vx: ship.vx, vy: ship.vy, vz: ship.vz,
+        x: ship.x,
+        y: ship.y,
+        z: ship.z,
+        vx: ship.vx,
+        vy: ship.vy,
+        vz: ship.vz,
         heading: ship.heading,
         pitch: ship.pitch,
         bank: ship.bank,
@@ -62,7 +69,11 @@ export class Simulation {
         lastInputTick: this.lastInputTick.get(id) ?? 0,
       });
     }
-    return { tick: this.state.tick, ships };
+    return {
+      tick: this.state.tick,
+      serverTimeMs: this.state.tick * TICK_DT * 1000,
+      ships,
+    };
   }
 
   private zeroInput(): ShipInput {

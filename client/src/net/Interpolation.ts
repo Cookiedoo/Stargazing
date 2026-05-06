@@ -2,50 +2,75 @@ import type { ShipSnapshotWire } from "@stargazing/shared";
 
 const INTERP_DELAY_MS = 100;
 const MAX_BUFFER_AGE_MS = 1000;
+const MAX_EXTRAPOLATION_MS = 200;
 
 interface TimedSnapshot {
-  receivedAt: number;
+  serverTimeMs: number;
   snap: ShipSnapshotWire;
 }
 
 export class Interpolation {
   private buffer: TimedSnapshot[] = [];
+  private clockOffsetMs: number | null = null;
 
-  push(snap: ShipSnapshotWire, now: number): void {
-    this.buffer.push({ receivedAt: now, snap });
-    // Drop ancient entries.
-    const cutoff = now - MAX_BUFFER_AGE_MS;
-    while (this.buffer.length > 0 && this.buffer[0].receivedAt < cutoff) {
+  push(
+    snap: ShipSnapshotWire,
+    serverTimeMs: number,
+    receivedAtLocalMs: number,
+  ): void {
+    const offsetEstimate = receivedAtLocalMs - serverTimeMs;
+
+    if (this.clockOffsetMs === null || offsetEstimate > this.clockOffsetMs) {
+      this.clockOffsetMs = offsetEstimate;
+    }
+
+    this.buffer.push({ serverTimeMs, snap });
+
+    const cutoff = serverTimeMs - MAX_BUFFER_AGE_MS;
+    while (this.buffer.length > 0 && this.buffer[0].serverTimeMs < cutoff) {
       this.buffer.shift();
     }
   }
 
-  sample(now: number): ShipSnapshotWire | null {
-    if (this.buffer.length === 0) return null;
-    if (this.buffer.length === 1) return this.buffer[0].snap; // best we can do
+  sample(nowLocalMs: number): ShipSnapshotWire | null {
+    if (this.clockOffsetMs === null || this.buffer.length === 0) {
+      return null;
+    }
 
-    const renderTime = now - INTERP_DELAY_MS;
+    const renderServerTime = nowLocalMs - this.clockOffsetMs - INTERP_DELAY_MS;
 
-    let a: TimedSnapshot | null = null;
-    let b: TimedSnapshot | null = null;
+    // Warmup: renderTime is before all buffered snaps. Hold the first.
+    if (renderServerTime <= this.buffer[0].serverTimeMs) {
+      return this.buffer[0].snap;
+    }
+
+    const last = this.buffer[this.buffer.length - 1];
+    if (renderServerTime >= last.serverTimeMs) {
+      const stall = renderServerTime - last.serverTimeMs;
+      if (stall > MAX_EXTRAPOLATION_MS) return last.snap;
+      const dt = stall / 1000;
+      return {
+        ...last.snap,
+        x: last.snap.x + last.snap.vx * dt,
+        y: last.snap.y + last.snap.vy * dt,
+        z: last.snap.z + last.snap.vz * dt,
+      };
+    }
+
     for (let i = 0; i < this.buffer.length - 1; i++) {
+      const a = this.buffer[i];
+      const b = this.buffer[i + 1];
       if (
-        this.buffer[i].receivedAt <= renderTime &&
-        this.buffer[i + 1].receivedAt >= renderTime
+        a.serverTimeMs <= renderServerTime &&
+        b.serverTimeMs >= renderServerTime
       ) {
-        a = this.buffer[i];
-        b = this.buffer[i + 1];
-        break;
+        const span = b.serverTimeMs - a.serverTimeMs;
+        const t = span > 0 ? (renderServerTime - a.serverTimeMs) / span : 0;
+        return lerpSnap(a.snap, b.snap, t);
       }
     }
 
-    if (!a || !b) {
-      return this.buffer[this.buffer.length - 1].snap;
-    }
-
-    const span = b.receivedAt - a.receivedAt;
-    const t = span > 0 ? (renderTime - a.receivedAt) / span : 0;
-    return lerpSnap(a.snap, b.snap, t);
+    return last.snap;
   }
 }
 
@@ -72,7 +97,6 @@ function lerpSnap(
 
 function lerpAngle(a: number, b: number, t: number): number {
   let diff = b - a;
-  // Wrap to [-π, π] so we always take the short path around the circle.
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
   return a + diff * t;
