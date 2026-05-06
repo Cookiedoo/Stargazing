@@ -51,7 +51,7 @@ export class MatchScreen implements Screen {
   private remotes = new Map<string, Interpolation>();
 
   private clientTick = 0;
-  private lastInputSend = 0;
+  private inputSendAccumulator = 0;
   private readonly INPUT_SEND_INTERVAL = 1 / 30;
 
   private _shipPos = new Vector3();
@@ -150,12 +150,19 @@ export class MatchScreen implements Screen {
         boost: this.controls.boost,
       };
 
-      if (elapsed - this.lastInputSend >= this.INPUT_SEND_INTERVAL) {
-        this.lastInputSend = elapsed;
+      this.inputSendAccumulator += dt;
+
+      while (this.inputSendAccumulator >= this.INPUT_SEND_INTERVAL) {
+        this.inputSendAccumulator -= this.INPUT_SEND_INTERVAL;
+
         this.clientTick++;
+
         this.socket.send({
           type: MSG.INPUT,
-          payload: { ...currentInput, clientTick: this.clientTick },
+          payload: {
+            ...currentInput,
+            clientTick: this.clientTick,
+          },
         });
       }
 

@@ -38,14 +38,20 @@ export class Simulation {
       pitch: clampSym(input.pitch),
       boost: !!input.boost,
     });
+
     const prev = this.lastInputTick.get(playerId) ?? 0;
-    if (clientTick > prev) this.lastInputTick.set(playerId, clientTick);
+
+    if (clientTick > prev) {
+      this.lastInputTick.set(playerId, clientTick);
+    }
   }
 
   step(): void {
     this.state.tick++;
+
     for (const [id, ship] of this.state.ships) {
       const input = this.latestInputs.get(id) ?? this.zeroInput();
+
       stepShip(ship, input, TICK_DT);
       applyBoundary(ship);
     }
@@ -53,6 +59,7 @@ export class Simulation {
 
   buildSnapshot() {
     const ships = [];
+
     for (const [id, ship] of this.state.ships) {
       ships.push({
         id,
@@ -69,6 +76,7 @@ export class Simulation {
         lastInputTick: this.lastInputTick.get(id) ?? 0,
       });
     }
+
     return {
       tick: this.state.tick,
       serverTimeMs: Date.now(),
@@ -77,7 +85,13 @@ export class Simulation {
   }
 
   private zeroInput(): ShipInput {
-    return { thrust: 0, brake: 0, strafe: 0, pitch: 0, boost: false };
+    return {
+      thrust: 0,
+      brake: 0,
+      strafe: 0,
+      pitch: 0,
+      boost: false,
+    };
   }
 }
 
