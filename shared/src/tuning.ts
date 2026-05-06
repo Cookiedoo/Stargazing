@@ -1,12 +1,12 @@
 export const SHIP = {
-  THRUST_FORCE: 100,
+  THRUST_FORCE: 80,
   YAW_RATE: 1.4,
   MAX_PITCH: Math.PI * 0.28,
   PITCH_SMOOTH: 2,
   BANK_ANGLE_MAX: 0.52,
   BANK_SMOOTH: 7,
   VELOCITY_DAMPING: 0.992,
-  BOOST_MULTIPLIER: 1.5,
+  BOOST_MULTIPLIER: 1.01,
 
   EXHAUST_MIN: 25,
   EXHAUST_MAX: 75,
@@ -27,7 +27,7 @@ export const MAP = {
 export const NETCODE = {
   TICK_HZ: 30,
   TICK_DT: 1 / 30,
-  INTERPOLATION_DELAY_MS: 150,
+  INTERPOLATION_DELAY_MS: 200,
 } as const;
 
 export const UI = {
