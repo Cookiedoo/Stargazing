@@ -22,6 +22,7 @@ const PLAYER_COLORS = [
 
 const INPUT_SEND_HZ = 30;
 const INPUT_SEND_INTERVAL = 1 / INPUT_SEND_HZ;
+const SERVER_TIME_OFFSET_SMOOTHING = 0.02;
 
 // The old value of 2 was useful for diagnostics, but too noisy for this scale.
 // With a 9000-unit world, 2-10 unit corrections are expected under live latency.
@@ -62,6 +63,7 @@ export class MatchScreen implements Screen {
   private latestServerTick = 0;
   private inputSendAccumulator = 0;
   private lastCorrectionWarnMs = 0;
+  private serverTimeOffsetMs: number | null = null;
 
   private _shipPos = new Vector3();
 
@@ -113,6 +115,10 @@ export class MatchScreen implements Screen {
 
     this.router.on(MSG.SNAPSHOT, (payload) => {
       const receivedAtMs = performance.now();
+      const snapshotTimeMs = this.mapServerTimeToClientTime(
+        payload.serverTimeMs,
+        receivedAtMs,
+      );
       const presentIds = new Set<string>();
 
       this.latestServerTick = payload.tick;
@@ -137,7 +143,7 @@ export class MatchScreen implements Screen {
             interp = new Interpolation();
             this.remotes.set(shipSnap.id, interp);
           }
-          interp.push(shipSnap, receivedAtMs);
+          interp.push(shipSnap, snapshotTimeMs);
         }
       }
 
@@ -175,7 +181,7 @@ export class MatchScreen implements Screen {
         });
       }
 
-      this.prediction.update(dt);
+      this.prediction.update(dt, this.inputSendAccumulator);
 
       const myView = this.ships.get(this.myId);
       if (myView && this.prediction.hasSnapshot) {
@@ -270,6 +276,7 @@ export class MatchScreen implements Screen {
     this.renderer = null;
     this.chaseCamera = null;
     this.hasSnappedCamera = false;
+    this.serverTimeOffsetMs = null;
   }
 
   private readInput(dt: number): ShipInput {
@@ -299,6 +306,27 @@ export class MatchScreen implements Screen {
       `visual ${debug.lastVisualCorrectionDistance.toFixed(2)} ` +
       `remoteBuf ${remoteBufferSize} remoteAge ${remoteAgeMs.toFixed(0)}ms ` +
       `hold ${remoteHolding ? "Y" : "N"}`;
+  }
+
+  private mapServerTimeToClientTime(
+    serverTimeMs: number,
+    receivedAtMs: number,
+  ): number {
+    if (!Number.isFinite(serverTimeMs)) {
+      return receivedAtMs;
+    }
+
+    const observedOffsetMs = receivedAtMs - serverTimeMs;
+
+    if (this.serverTimeOffsetMs === null) {
+      this.serverTimeOffsetMs = observedOffsetMs;
+    } else {
+      this.serverTimeOffsetMs +=
+        (observedOffsetMs - this.serverTimeOffsetMs) *
+        SERVER_TIME_OFFSET_SMOOTHING;
+    }
+
+    return serverTimeMs + this.serverTimeOffsetMs;
   }
 
   private warnOnCorrectionSpike(nowMs: number): void {

@@ -10,9 +10,8 @@ import {
 const MAX_BUFFERED_INPUTS = 240;
 
 // Slower visual correction keeps the active camera from twitching every snapshot.
-// Logical prediction is still corrected immediately; only presentation is eased.
+// Logical prediction is still corrected immediately; only reconciliation is eased.
 const CORRECTION_DECAY = 3.5;
-const RENDER_SMOOTHING = 22;
 
 interface BufferedInput {
   tick: number;
@@ -32,6 +31,8 @@ export class Prediction {
   readonly ship: Ship = new Ship();
 
   private inputs: BufferedInput[] = [];
+  private lastInput: ShipInput = zeroInput();
+  private renderShip: Ship = new Ship();
   private gotInitialSnapshot = false;
 
   private correctionX = 0;
@@ -189,7 +190,7 @@ export class Prediction {
     );
   }
 
-  update(dt: number): void {
+  update(dt: number, renderLeadTime: number = 0): void {
     if (!this.gotInitialSnapshot) return;
 
     const correctionAlpha = 1 - Math.exp(-CORRECTION_DECAY * dt);
@@ -201,28 +202,27 @@ export class Prediction {
     this.correctionPitch += (0 - this.correctionPitch) * correctionAlpha;
     this.correctionBank += (0 - this.correctionBank) * correctionAlpha;
 
-    const targetX = this.ship.x + this.correctionX;
-    const targetY = this.ship.y + this.correctionY;
-    const targetZ = this.ship.z + this.correctionZ;
-    const targetHeading = this.ship.heading + this.correctionHeading;
-    const targetPitch = this.ship.pitch + this.correctionPitch;
-    const targetBank = this.ship.bank + this.correctionBank;
+    const leadTime = clamp(renderLeadTime, 0, NETCODE.TICK_DT);
+    const baseShip = leadTime > 0 ? this.renderShip : this.ship;
 
-    const renderAlpha = 1 - Math.exp(-RENDER_SMOOTHING * dt);
+    if (leadTime > 0) {
+      this.renderShip.applySnapshot(this.ship.toSnapshot());
+      stepShip(this.renderShip, this.lastInput, leadTime);
+      applyBoundary(this.renderShip, leadTime);
+    }
 
-    this.smoothX += (targetX - this.smoothX) * renderAlpha;
-    this.smoothY += (targetY - this.smoothY) * renderAlpha;
-    this.smoothZ += (targetZ - this.smoothZ) * renderAlpha;
-    this.smoothHeading +=
-      angleDelta(this.smoothHeading, targetHeading) * renderAlpha;
-    this.smoothPitch +=
-      angleDelta(this.smoothPitch, targetPitch) * renderAlpha;
-    this.smoothBank += angleDelta(this.smoothBank, targetBank) * renderAlpha;
+    this.smoothX = baseShip.x + this.correctionX;
+    this.smoothY = baseShip.y + this.correctionY;
+    this.smoothZ = baseShip.z + this.correctionZ;
+    this.smoothHeading = baseShip.heading + this.correctionHeading;
+    this.smoothPitch = baseShip.pitch + this.correctionPitch;
+    this.smoothBank = baseShip.bank + this.correctionBank;
   }
 
   private stepPredictedShip(input: ShipInput): void {
+    this.lastInput = input;
     stepShip(this.ship, input, NETCODE.TICK_DT);
-    applyBoundary(this.ship);
+    applyBoundary(this.ship, NETCODE.TICK_DT);
   }
 
   private seedRenderPose(): void {
@@ -281,6 +281,23 @@ function clampSym(v: number): number {
   if (v < -1) return -1;
   if (v > 1) return 1;
   return v;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  if (!Number.isFinite(v)) return min;
+  if (v < min) return min;
+  if (v > max) return max;
+  return v;
+}
+
+function zeroInput(): ShipInput {
+  return {
+    thrust: 0,
+    brake: 0,
+    strafe: 0,
+    pitch: 0,
+    boost: false,
+  };
 }
 
 function angleDelta(from: number, to: number): number {

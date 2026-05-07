@@ -1,7 +1,7 @@
 import { Ship } from '../state/Ship.js';
-import { MAP } from '../tuning.js';
+import { MAP, NETCODE } from '../tuning.js';
 
-export function applyBoundary(ship: Ship): number {
+export function applyBoundary(ship: Ship, dt: number = NETCODE.TICK_DT): number {
   const dist = Math.sqrt(ship.x * ship.x + ship.z * ship.z);
   const distFromEdge = MAP.BOUNDARY_RADIUS - dist;
 
@@ -12,8 +12,9 @@ export function applyBoundary(ship: Ship): number {
     if (dist > 0) {
       const pushX = -ship.x / dist;
       const pushZ = -ship.z / dist;
-      ship.vx += pushX * MAP.BOUNDARY_FORCE * warningT;
-      ship.vz += pushZ * MAP.BOUNDARY_FORCE * warningT;
+      const tickScale = Math.max(0, dt) / NETCODE.TICK_DT;
+      ship.vx += pushX * MAP.BOUNDARY_FORCE * warningT * tickScale;
+      ship.vz += pushZ * MAP.BOUNDARY_FORCE * warningT * tickScale;
     }
   }
 

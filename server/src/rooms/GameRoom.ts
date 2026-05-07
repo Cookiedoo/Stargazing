@@ -11,6 +11,8 @@ interface PlayerConnection {
 
 const SNAPSHOT_RATE_HZ = 20;
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE_HZ;
+const LOOP_RATE_HZ = 60;
+const LOOP_INTERVAL_MS = 1000 / LOOP_RATE_HZ;
 
 export class GameRoom {
   private state: DurableObjectState;
@@ -157,11 +159,11 @@ export class GameRoom {
       }
 
       if (this.snapshotAccumulator >= SNAPSHOT_INTERVAL) {
-        this.snapshotAccumulator -= SNAPSHOT_INTERVAL;
+        this.snapshotAccumulator %= SNAPSHOT_INTERVAL;
         this.broadcastSnapshot();
       }
 
-      setTimeout(frame, 0);
+      setTimeout(frame, LOOP_INTERVAL_MS);
     };
 
     frame();

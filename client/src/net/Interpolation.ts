@@ -5,7 +5,7 @@ const INTERP_DELAY_MS = NETCODE.INTERPOLATION_DELAY_MS;
 const MAX_BUFFER_MS = 2000;
 
 interface TimedSnapshot {
-  receivedAtMs: number;
+  timeMs: number;
   snap: ShipSnapshotWire;
 }
 
@@ -23,14 +23,14 @@ export class Interpolation {
     holdingLatest: false,
   };
 
-  push(snap: ShipSnapshotWire, receivedAtMs: number): void {
+  push(snap: ShipSnapshotWire, timeMs: number): void {
     const last = this.buffer[this.buffer.length - 1];
-    if (last && receivedAtMs < last.receivedAtMs) return;
+    if (last && timeMs < last.timeMs) return;
 
-    this.buffer.push({ receivedAtMs, snap });
+    this.buffer.push({ timeMs, snap });
 
-    const cutoff = receivedAtMs - MAX_BUFFER_MS;
-    while (this.buffer.length && this.buffer[0].receivedAtMs < cutoff) {
+    const cutoff = timeMs - MAX_BUFFER_MS;
+    while (this.buffer.length && this.buffer[0].timeMs < cutoff) {
       this.buffer.shift();
     }
   }
@@ -48,11 +48,11 @@ export class Interpolation {
     const first = this.buffer[0];
     const last = this.buffer[this.buffer.length - 1];
 
-    this.lastDebug.interpolationAgeMs = Math.max(0, nowMs - last.receivedAtMs);
+    this.lastDebug.interpolationAgeMs = Math.max(0, nowMs - last.timeMs);
 
-    if (renderTimeMs <= first.receivedAtMs) return first.snap;
+    if (renderTimeMs <= first.timeMs) return first.snap;
 
-    if (renderTimeMs >= last.receivedAtMs) {
+    if (renderTimeMs >= last.timeMs) {
       this.lastDebug.holdingLatest = true;
       return last.snap;
     }
@@ -61,9 +61,9 @@ export class Interpolation {
       const a = this.buffer[i];
       const b = this.buffer[i + 1];
 
-      if (a.receivedAtMs <= renderTimeMs && b.receivedAtMs >= renderTimeMs) {
-        const span = b.receivedAtMs - a.receivedAtMs;
-        const t = span > 0 ? (renderTimeMs - a.receivedAtMs) / span : 0;
+      if (a.timeMs <= renderTimeMs && b.timeMs >= renderTimeMs) {
+        const span = b.timeMs - a.timeMs;
+        const t = span > 0 ? (renderTimeMs - a.timeMs) / span : 0;
         return lerpSnap(a.snap, b.snap, t);
       }
     }

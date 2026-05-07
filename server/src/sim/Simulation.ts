@@ -93,7 +93,7 @@ export class Simulation {
       }
 
       stepShip(ship, input, TICK_DT);
-      applyBoundary(ship);
+      applyBoundary(ship, TICK_DT);
     }
   }
 
