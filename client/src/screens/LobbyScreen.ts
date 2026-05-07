@@ -200,7 +200,7 @@ export class LobbyScreen implements Screen {
       return;
     }
     this.transferringSocket = true;
-    const match = new MatchScreen(this.manager, this.socket);
+    const match = new MatchScreen( this.socket);
     match.setMyId(this.myId);
     this.manager.go(match);
   }
