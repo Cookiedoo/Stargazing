@@ -22,7 +22,10 @@ const PLAYER_COLORS = [
 
 const INPUT_SEND_HZ = 30;
 const INPUT_SEND_INTERVAL = 1 / INPUT_SEND_HZ;
-const CORRECTION_WARN_DISTANCE = 2;
+
+// The old value of 2 was useful for diagnostics, but too noisy for this scale.
+// With a 9000-unit world, 2-10 unit corrections are expected under live latency.
+const CORRECTION_WARN_DISTANCE = 25;
 const CORRECTION_WARN_INTERVAL_MS = 1000;
 
 function colorForId(id: string): number {
@@ -271,10 +274,10 @@ export class MatchScreen implements Screen {
 
   private readInput(dt: number): ShipInput {
     return {
-      thrust: this.controls.thrust,
-      brake: this.controls.brake,
-      strafe: this.controls.strafe,
-      pitch: this.controls.pitch(dt),
+      thrust: clamp01(this.controls.thrust),
+      brake: clamp01(this.controls.brake),
+      strafe: clampSym(this.controls.strafe),
+      pitch: clampSym(this.controls.pitch(dt)),
       boost: this.controls.boost,
     };
   }
@@ -294,7 +297,6 @@ export class MatchScreen implements Screen {
       `pending ${debug.pendingInputs} replay ${debug.lastReplayCount} ` +
       `corr ${debug.lastCorrectionDistance.toFixed(2)} ` +
       `visual ${debug.lastVisualCorrectionDistance.toFixed(2)} ` +
-      `dead ${debug.correctionSuppressed ? "Y" : "N"} ` +
       `remoteBuf ${remoteBufferSize} remoteAge ${remoteAgeMs.toFixed(0)}ms ` +
       `hold ${remoteHolding ? "Y" : "N"}`;
   }
@@ -314,4 +316,18 @@ export class MatchScreen implements Screen {
       ...this.prediction.debug,
     });
   }
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+function clampSym(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  if (v < -1) return -1;
+  if (v > 1) return 1;
+  return v;
 }

@@ -8,11 +8,11 @@ import {
 } from "@stargazing/shared";
 
 const MAX_BUFFERED_INPUTS = 240;
-const CORRECTION_DECAY = 10;
-const RENDER_SMOOTHING = 32;
 
-const POSITION_CORRECTION_DEADZONE = 0.35;
-const ANGLE_CORRECTION_DEADZONE = 0.006;
+// Slower visual correction keeps the active camera from twitching every snapshot.
+// Logical prediction is still corrected immediately; only presentation is eased.
+const CORRECTION_DECAY = 3.5;
+const RENDER_SMOOTHING = 22;
 
 interface BufferedInput {
   tick: number;
@@ -38,6 +38,8 @@ export class Prediction {
   private correctionY = 0;
   private correctionZ = 0;
   private correctionHeading = 0;
+  private correctionPitch = 0;
+  private correctionBank = 0;
 
   private smoothX = 0;
   private smoothY = 0;
@@ -50,7 +52,6 @@ export class Prediction {
   private lastCorrectionDistanceValue = 0;
   private lastVisualCorrectionDistanceValue = 0;
   private lastReplayCountValue = 0;
-  private correctionSuppressedValue = false;
 
   get hasSnapshot(): boolean {
     return this.gotInitialSnapshot;
@@ -77,7 +78,7 @@ export class Prediction {
   }
 
   get correctionSuppressed(): boolean {
-    return this.correctionSuppressedValue;
+    return false;
   }
 
   get debug(): PredictionDebug {
@@ -94,16 +95,17 @@ export class Prediction {
   pushInput(clientTick: number, input: ShipInput): void {
     if (clientTick <= 0) return;
 
+    const sanitized = sanitizeInput(input);
     const last = this.inputs[this.inputs.length - 1];
 
     if (last?.tick === clientTick) {
-      last.input = input;
+      last.input = sanitized;
       return;
     }
 
     if (last && clientTick < last.tick) return;
 
-    this.inputs.push({ tick: clientTick, input });
+    this.inputs.push({ tick: clientTick, input: sanitized });
 
     if (this.inputs.length > MAX_BUFFERED_INPUTS) {
       this.inputs.splice(0, this.inputs.length - MAX_BUFFERED_INPUTS);
@@ -112,7 +114,7 @@ export class Prediction {
 
   predictTick(input: ShipInput): void {
     if (!this.gotInitialSnapshot) return;
-    this.stepPredictedShip(input);
+    this.stepPredictedShip(sanitizeInput(input));
   }
 
   applyServerSnapshot(snap: ShipSnapshotWire): void {
@@ -136,14 +138,13 @@ export class Prediction {
     const previousPredictedX = this.ship.x;
     const previousPredictedY = this.ship.y;
     const previousPredictedZ = this.ship.z;
-    const previousPredictedHeading = this.ship.heading;
-    const previousPredictedPitch = this.ship.pitch;
-    const previousPredictedBank = this.ship.bank;
 
     const previousRenderX = this.renderX;
     const previousRenderY = this.renderY;
     const previousRenderZ = this.renderZ;
     const previousRenderHeading = this.renderHeading;
+    const previousRenderPitch = this.renderPitch;
+    const previousRenderBank = this.renderBank;
 
     this.ship.applySnapshot(snap);
     this.lastAckTickValue = snap.lastInputTick;
@@ -161,42 +162,16 @@ export class Prediction {
     const rawCorrectionX = previousPredictedX - this.ship.x;
     const rawCorrectionY = previousPredictedY - this.ship.y;
     const rawCorrectionZ = previousPredictedZ - this.ship.z;
-    const rawHeadingCorrection = Math.abs(
-      angleDelta(this.ship.heading, previousPredictedHeading),
-    );
-    const rawPitchCorrection = Math.abs(
-      angleDelta(this.ship.pitch, previousPredictedPitch),
-    );
-    const rawBankCorrection = Math.abs(
-      angleDelta(this.ship.bank, previousPredictedBank),
-    );
 
-    const rawCorrectionDistance = Math.sqrt(
+    this.lastCorrectionDistanceValue = Math.sqrt(
       rawCorrectionX * rawCorrectionX +
         rawCorrectionY * rawCorrectionY +
         rawCorrectionZ * rawCorrectionZ,
     );
 
-    this.lastCorrectionDistanceValue = rawCorrectionDistance;
-
-    const shouldSuppress =
-      rawCorrectionDistance <= POSITION_CORRECTION_DEADZONE &&
-      rawHeadingCorrection <= ANGLE_CORRECTION_DEADZONE &&
-      rawPitchCorrection <= ANGLE_CORRECTION_DEADZONE &&
-      rawBankCorrection <= ANGLE_CORRECTION_DEADZONE;
-
-    this.correctionSuppressedValue = shouldSuppress;
-
-    if (shouldSuppress) {
-      this.correctionX = 0;
-      this.correctionY = 0;
-      this.correctionZ = 0;
-      this.correctionHeading = 0;
-      this.lastVisualCorrectionDistanceValue = 0;
-      this.seedRenderPose();
-      return;
-    }
-
+    // Preserve the current rendered pose exactly, then ease it toward the newly
+    // reconciled predicted ship. This prevents snapshot arrival from producing
+    // an immediate visible pop.
     this.correctionX = previousRenderX - this.ship.x;
     this.correctionY = previousRenderY - this.ship.y;
     this.correctionZ = previousRenderZ - this.ship.z;
@@ -204,6 +179,8 @@ export class Prediction {
       this.ship.heading,
       previousRenderHeading,
     );
+    this.correctionPitch = angleDelta(this.ship.pitch, previousRenderPitch);
+    this.correctionBank = angleDelta(this.ship.bank, previousRenderBank);
 
     this.lastVisualCorrectionDistanceValue = Math.sqrt(
       this.correctionX * this.correctionX +
@@ -221,11 +198,15 @@ export class Prediction {
     this.correctionY += (0 - this.correctionY) * correctionAlpha;
     this.correctionZ += (0 - this.correctionZ) * correctionAlpha;
     this.correctionHeading += (0 - this.correctionHeading) * correctionAlpha;
+    this.correctionPitch += (0 - this.correctionPitch) * correctionAlpha;
+    this.correctionBank += (0 - this.correctionBank) * correctionAlpha;
 
     const targetX = this.ship.x + this.correctionX;
     const targetY = this.ship.y + this.correctionY;
     const targetZ = this.ship.z + this.correctionZ;
     const targetHeading = this.ship.heading + this.correctionHeading;
+    const targetPitch = this.ship.pitch + this.correctionPitch;
+    const targetBank = this.ship.bank + this.correctionBank;
 
     const renderAlpha = 1 - Math.exp(-RENDER_SMOOTHING * dt);
 
@@ -235,9 +216,8 @@ export class Prediction {
     this.smoothHeading +=
       angleDelta(this.smoothHeading, targetHeading) * renderAlpha;
     this.smoothPitch +=
-      angleDelta(this.smoothPitch, this.ship.pitch) * renderAlpha;
-    this.smoothBank +=
-      angleDelta(this.smoothBank, this.ship.bank) * renderAlpha;
+      angleDelta(this.smoothPitch, targetPitch) * renderAlpha;
+    this.smoothBank += angleDelta(this.smoothBank, targetBank) * renderAlpha;
   }
 
   private stepPredictedShip(input: ShipInput): void {
@@ -277,6 +257,30 @@ export class Prediction {
   get renderBank(): number {
     return this.smoothBank;
   }
+}
+
+function sanitizeInput(input: ShipInput): ShipInput {
+  return {
+    thrust: clamp01(input.thrust),
+    brake: clamp01(input.brake),
+    strafe: clampSym(input.strafe),
+    pitch: clampSym(input.pitch),
+    boost: !!input.boost,
+  };
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+function clampSym(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  if (v < -1) return -1;
+  if (v > 1) return 1;
+  return v;
 }
 
 function angleDelta(from: number, to: number): number {
