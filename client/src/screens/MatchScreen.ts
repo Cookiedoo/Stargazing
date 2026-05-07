@@ -1,4 +1,4 @@
-import type { Screen, ScreenManager } from "./ScreenManager.js";
+import type { Screen } from "./ScreenManager.js";
 import { Renderer } from "../engine/renderer.js";
 import { GameLoop } from "../engine/loop.js";
 import { detectPlatform } from "../engine/platform.js";
@@ -35,7 +35,6 @@ function colorForId(id: string): number {
 }
 
 export class MatchScreen implements Screen {
-  private manager: ScreenManager;
   private socket: SocketClient;
 
   private renderer: Renderer | null = null;
@@ -63,8 +62,7 @@ export class MatchScreen implements Screen {
 
   private _shipPos = new Vector3();
 
-  constructor(manager: ScreenManager, socket: SocketClient) {
-    this.manager = manager;
+  constructor(socket: SocketClient) {
     this.socket = socket;
     this.pointerLock = new PointerLock();
     this.controls = new DesktopControls(this.pointerLock);
