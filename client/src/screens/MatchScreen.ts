@@ -111,7 +111,6 @@ export class MatchScreen implements Screen {
     this.chaseCamera.setOffset(0, 20, 50);
     this.chaseCamera.setLookAtOffset(0, 8, 0);
     this.chaseCamera.setSmoothing(10, 14);
-    this.chaseCamera.setTargetSmoothing(18);
 
     this.router.on(MSG.SNAPSHOT, (payload) => {
       const receivedAtMs = performance.now();

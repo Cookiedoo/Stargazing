@@ -207,11 +207,15 @@ export class ShipView {
   update(dt: number): void {
     if (!this.exhaust) return;
 
-    if (this.currentThrustLevel > 0.05) {
-      const back = new Vector3(0, 0, -0.35).applyQuaternion(
-        this.root.quaternion,
-      );
-      const nozzle = this.root.position.clone().addScaledVector(back, 5.5 * 3);
+    if (this.currentThrustLevel > VIEW.SHIP_VIEW.EXHAUST_ACTIVE_THRUST) {
+      const back = new Vector3(...VIEW.SHIP_VIEW.EXHAUST_BACK_VECTOR)
+        .applyQuaternion(this.root.quaternion);
+      const nozzle = this.root.position
+        .clone()
+        .addScaledVector(
+          back,
+          VIEW.SHIP_VIEW.EXHAUST_NOZZLE_DISTANCE * VIEW.SHIP_VIEW.MODEL_SCALE,
+        );
 
       const speed = Math.sqrt(
         this.currentVx * this.currentVx +
@@ -227,11 +231,21 @@ export class ShipView {
         const p = this.particles[i];
         if (p.life <= 0) {
           p.position.copy(nozzle);
-          p.velocity.copy(back).multiplyScalar(8 + Math.random() * 6);
-          p.velocity.x += (Math.random() - 0.5) * 4;
-          p.velocity.y += (Math.random() - 0.5) * 4;
-          p.velocity.z += (Math.random() - 0.5) * 10;
-          p.life = 0.2 + Math.random() * 0.4;
+          p.velocity
+            .copy(back)
+            .multiplyScalar(
+              VIEW.SHIP_VIEW.EXHAUST_SPEED_BASE +
+                Math.random() * VIEW.SHIP_VIEW.EXHAUST_SPEED_RANDOM,
+            );
+          p.velocity.x +=
+            (Math.random() - 0.5) * VIEW.SHIP_VIEW.EXHAUST_DRIFT_XY;
+          p.velocity.y +=
+            (Math.random() - 0.5) * VIEW.SHIP_VIEW.EXHAUST_DRIFT_XY;
+          p.velocity.z +=
+            (Math.random() - 0.5) * VIEW.SHIP_VIEW.EXHAUST_DRIFT_Z;
+          p.life =
+            VIEW.SHIP_VIEW.EXHAUST_LIFE_BASE +
+            Math.random() * VIEW.SHIP_VIEW.EXHAUST_LIFE_RANDOM;
           p.maxLife = p.life;
         }
       }
@@ -247,14 +261,15 @@ export class ShipView {
         pos[i + 1] = p.position.y;
         pos[i + 2] = p.position.z;
       } else {
-        pos[i] = pos[i + 1] = pos[i + 2] = 99999;
+        pos[i] = pos[i + 1] = pos[i + 2] =
+          VIEW.SHIP_VIEW.EXHAUST_HIDDEN_POSITION;
       }
       i += 3;
     }
     this.exhaust.geometry.attributes.position.needsUpdate = true;
     (this.exhaust.material as PointsMaterial).opacity = Math.min(
       1,
-      this.currentThrustLevel * 2,
+      this.currentThrustLevel * VIEW.SHIP_VIEW.EXHAUST_OPACITY_MULTIPLIER,
     );
   }
 
