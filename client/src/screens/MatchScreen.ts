@@ -23,9 +23,6 @@ const PLAYER_COLORS = [
 const INPUT_SEND_HZ = 30;
 const INPUT_SEND_INTERVAL = 1 / INPUT_SEND_HZ;
 const SERVER_TIME_OFFSET_SMOOTHING = 0.02;
-
-// The old value of 2 was useful for diagnostics, but too noisy for this scale.
-// With a 9000-unit world, 2-10 unit corrections are expected under live latency.
 const CORRECTION_WARN_DISTANCE = 25;
 const CORRECTION_WARN_INTERVAL_MS = 1000;
 
@@ -38,7 +35,6 @@ function colorForId(id: string): number {
 }
 
 export class MatchScreen implements Screen {
-  // @ts-expect-error reserved
   private manager: ScreenManager;
   private socket: SocketClient;
 
@@ -249,7 +245,12 @@ export class MatchScreen implements Screen {
         this.boundary.update(dt, this._shipPos);
       }
 
-      this.updateNetcodeHud(netInfo, remoteBufferSize, remoteAgeMs, remoteHolding);
+      this.updateNetcodeHud(
+        netInfo,
+        remoteBufferSize,
+        remoteAgeMs,
+        remoteHolding,
+      );
       this.warnOnCorrectionSpike(nowMs);
 
       this.starfield?.update(dt, elapsed);
@@ -319,6 +320,9 @@ export class MatchScreen implements Screen {
 
     if (this.serverTimeOffsetMs === null) {
       this.serverTimeOffsetMs = observedOffsetMs;
+    } else if (observedOffsetMs > this.serverTimeOffsetMs) {
+      this.serverTimeOffsetMs +=
+        (observedOffsetMs - this.serverTimeOffsetMs) * 0.5;
     } else {
       this.serverTimeOffsetMs +=
         (observedOffsetMs - this.serverTimeOffsetMs) *

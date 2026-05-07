@@ -51,7 +51,15 @@ export class Interpolation {
 
     if (renderTimeMs >= last.timeMs) {
       this.lastDebug.holdingLatest = true;
-      return last.snap;
+      const stallMs = renderTimeMs - last.timeMs;
+      if (stallMs > 200) return last.snap;
+      const dt = stallMs / 1000;
+      return {
+        ...last.snap,
+        x: last.snap.x + last.snap.vx * dt,
+        y: last.snap.y + last.snap.vy * dt,
+        z: last.snap.z + last.snap.vz * dt,
+      };
     }
 
     for (let i = 0; i < this.buffer.length - 1; i++) {
