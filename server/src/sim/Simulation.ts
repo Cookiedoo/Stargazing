@@ -7,9 +7,11 @@ import {
 } from "@stargazing/shared";
 
 const TICK_RATE_HZ = 30;
+const MAX_QUEUED_INPUTS = 240;
+
 export const TICK_DT = 1 / TICK_RATE_HZ;
 
-interface PendingInput {
+interface QueuedInput {
   tick: number;
   input: ShipInput;
 }
@@ -23,7 +25,7 @@ interface SimulationSnapshot {
 export class Simulation {
   state: GameState;
 
-  private pendingInputs: Map<string, PendingInput> = new Map();
+  private inputQueues: Map<string, QueuedInput[]> = new Map();
   private currentInputs: Map<string, ShipInput> = new Map();
   private lastProcessedInputTick: Map<string, number> = new Map();
 
@@ -33,19 +35,21 @@ export class Simulation {
 
   addPlayer(id: string): void {
     this.state.addPlayer(id);
-    this.pendingInputs.delete(id);
+    this.inputQueues.set(id, []);
     this.currentInputs.set(id, this.zeroInput());
     this.lastProcessedInputTick.set(id, 0);
   }
 
   removePlayer(id: string): void {
     this.state.removePlayer(id);
-    this.pendingInputs.delete(id);
+    this.inputQueues.delete(id);
     this.currentInputs.delete(id);
     this.lastProcessedInputTick.delete(id);
   }
 
   receiveInput(playerId: string, input: ShipInput, clientTick: number): void {
+    const queue = this.inputQueues.get(playerId);
+    if (!queue) return;
     if (!Number.isFinite(clientTick)) return;
 
     const tick = Math.floor(clientTick);
@@ -53,41 +57,43 @@ export class Simulation {
 
     if (tick <= lastProcessed) return;
 
-    const pending = this.pendingInputs.get(playerId);
+    const sanitized = this.sanitizeInput(input);
 
-    if (pending && tick < pending.tick) return;
+    const existingIndex = queue.findIndex((entry) => entry.tick === tick);
+    if (existingIndex >= 0) {
+      queue[existingIndex] = { tick, input: sanitized };
+      return;
+    }
 
-    this.pendingInputs.set(playerId, {
-      tick,
-      input: this.sanitizeInput(input),
-    });
+    let insertAt = queue.length;
+    while (insertAt > 0 && queue[insertAt - 1].tick > tick) {
+      insertAt--;
+    }
+
+    queue.splice(insertAt, 0, { tick, input: sanitized });
+
+    if (queue.length > MAX_QUEUED_INPUTS) {
+      queue.splice(0, queue.length - MAX_QUEUED_INPUTS);
+    }
   }
 
   step(): void {
     this.state.tick++;
 
     for (const [id, ship] of this.state.ships) {
-      const pending = this.pendingInputs.get(id);
-      const lastProcessed = this.lastProcessedInputTick.get(id) ?? 0;
+      const queue = this.inputQueues.get(id);
+      const next = queue?.shift();
 
       let input = this.currentInputs.get(id) ?? this.zeroInput();
-      let sampledTick: number | null = null;
 
-      if (pending && pending.tick > lastProcessed) {
-        input = pending.input;
-        sampledTick = pending.tick;
+      if (next) {
+        input = next.input;
         this.currentInputs.set(id, input);
-        this.pendingInputs.delete(id);
-      } else if (pending && pending.tick <= lastProcessed) {
-        this.pendingInputs.delete(id);
+        this.lastProcessedInputTick.set(id, next.tick);
       }
 
       stepShip(ship, input, TICK_DT);
       applyBoundary(ship);
-
-      if (sampledTick !== null) {
-        this.lastProcessedInputTick.set(id, sampledTick);
-      }
     }
   }
 
