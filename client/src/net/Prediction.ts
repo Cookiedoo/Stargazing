@@ -7,9 +7,6 @@ import {
   type ShipSnapshotWire,
 } from "@stargazing/shared";
 
-// Slower visual correction keeps the active camera from twitching every snapshot.
-// Logical prediction is still corrected immediately; only reconciliation is eased.
-
 interface BufferedInput {
   tick: number;
   input: ShipInput;
@@ -26,11 +23,11 @@ export interface PredictionDebug {
 
 export class Prediction {
   readonly ship: Ship = new Ship();
+  private previousShip: Ship = new Ship();
 
   private inputs: BufferedInput[] = [];
-  private lastInput: ShipInput = zeroInput();
-  private renderShip: Ship = new Ship();
   private gotInitialSnapshot = false;
+  private interpAlpha = 0;
 
   private correctionX = 0;
   private correctionY = 0;
@@ -39,12 +36,12 @@ export class Prediction {
   private correctionPitch = 0;
   private correctionBank = 0;
 
-  private smoothX = 0;
-  private smoothY = 0;
-  private smoothZ = 0;
-  private smoothHeading = 0;
-  private smoothPitch = 0;
-  private smoothBank = 0;
+  private lastRenderX = 0;
+  private lastRenderY = 0;
+  private lastRenderZ = 0;
+  private lastRenderHeading = 0;
+  private lastRenderPitch = 0;
+  private lastRenderBank = 0;
 
   private lastAckTickValue = 0;
   private lastCorrectionDistanceValue = 0;
@@ -54,27 +51,21 @@ export class Prediction {
   get hasSnapshot(): boolean {
     return this.gotInitialSnapshot;
   }
-
   get pendingInputs(): number {
     return this.inputs.length;
   }
-
   get lastAckTick(): number {
     return this.lastAckTickValue;
   }
-
   get lastCorrectionDistance(): number {
     return this.lastCorrectionDistanceValue;
   }
-
   get lastVisualCorrectionDistance(): number {
     return this.lastVisualCorrectionDistanceValue;
   }
-
   get lastReplayCount(): number {
     return this.lastReplayCountValue;
   }
-
   get correctionSuppressed(): boolean {
     return false;
   }
@@ -86,25 +77,39 @@ export class Prediction {
       lastCorrectionDistance: this.lastCorrectionDistance,
       lastVisualCorrectionDistance: this.lastVisualCorrectionDistance,
       lastReplayCount: this.lastReplayCount,
-      correctionSuppressed: this.correctionSuppressed,
+      correctionSuppressed: false,
     };
+  }
+
+  get renderX(): number {
+    return this.lastRenderX;
+  }
+  get renderY(): number {
+    return this.lastRenderY;
+  }
+  get renderZ(): number {
+    return this.lastRenderZ;
+  }
+  get renderHeading(): number {
+    return this.lastRenderHeading;
+  }
+  get renderPitch(): number {
+    return this.lastRenderPitch;
+  }
+  get renderBank(): number {
+    return this.lastRenderBank;
   }
 
   pushInput(clientTick: number, input: ShipInput): void {
     if (clientTick <= 0) return;
-
     const sanitized = sanitizeInput(input);
     const last = this.inputs[this.inputs.length - 1];
-
     if (last?.tick === clientTick) {
       last.input = sanitized;
       return;
     }
-
     if (last && clientTick < last.tick) return;
-
     this.inputs.push({ tick: clientTick, input: sanitized });
-
     if (this.inputs.length > NETCODE.MAX_BUFFERED_INPUTS) {
       this.inputs.splice(0, this.inputs.length - NETCODE.MAX_BUFFERED_INPUTS);
     }
@@ -112,73 +117,78 @@ export class Prediction {
 
   predictTick(input: ShipInput): void {
     if (!this.gotInitialSnapshot) return;
-    this.stepPredictedShip(sanitizeInput(input));
+    copyShipState(this.ship, this.previousShip);
+    stepShip(this.ship, sanitizeInput(input), NETCODE.TICK_DT);
+    applyBoundary(this.ship, NETCODE.TICK_DT);
   }
 
   applyServerSnapshot(snap: ShipSnapshotWire): void {
     if (!this.gotInitialSnapshot) {
       this.ship.applySnapshot(snap);
+      this.previousShip.applySnapshot(snap);
       this.lastAckTickValue = snap.lastInputTick;
-      this.inputs = this.inputs.filter(
-        (entry) => entry.tick > snap.lastInputTick,
-      );
+      this.inputs = this.inputs.filter((e) => e.tick > snap.lastInputTick);
 
       for (const entry of this.inputs) {
-        this.stepPredictedShip(entry.input);
+        copyShipState(this.ship, this.previousShip);
+        stepShip(this.ship, entry.input, NETCODE.TICK_DT);
+        applyBoundary(this.ship, NETCODE.TICK_DT);
       }
 
       this.lastReplayCountValue = this.inputs.length;
-      this.seedRenderPose();
+      this.lastRenderX = this.ship.x;
+      this.lastRenderY = this.ship.y;
+      this.lastRenderZ = this.ship.z;
+      this.lastRenderHeading = this.ship.heading;
+      this.lastRenderPitch = this.ship.pitch;
+      this.lastRenderBank = this.ship.bank;
       this.gotInitialSnapshot = true;
       return;
     }
 
-    const previousPredictedX = this.ship.x;
-    const previousPredictedY = this.ship.y;
-    const previousPredictedZ = this.ship.z;
+    const prevRenderX = this.lastRenderX;
+    const prevRenderY = this.lastRenderY;
+    const prevRenderZ = this.lastRenderZ;
+    const prevRenderHeading = this.lastRenderHeading;
+    const prevRenderPitch = this.lastRenderPitch;
+    const prevRenderBank = this.lastRenderBank;
 
-    const previousRenderX = this.renderX;
-    const previousRenderY = this.renderY;
-    const previousRenderZ = this.renderZ;
-    const previousRenderHeading = this.renderHeading;
-    const previousRenderPitch = this.renderPitch;
-    const previousRenderBank = this.renderBank;
+    const prePredictedX = this.ship.x;
+    const prePredictedY = this.ship.y;
+    const prePredictedZ = this.ship.z;
 
     this.ship.applySnapshot(snap);
+    this.previousShip.applySnapshot(snap);
     this.lastAckTickValue = snap.lastInputTick;
-
-    this.inputs = this.inputs.filter(
-      (entry) => entry.tick > snap.lastInputTick,
-    );
+    this.inputs = this.inputs.filter((e) => e.tick > snap.lastInputTick);
 
     for (const entry of this.inputs) {
-      this.stepPredictedShip(entry.input);
+      copyShipState(this.ship, this.previousShip);
+      stepShip(this.ship, entry.input, NETCODE.TICK_DT);
+      applyBoundary(this.ship, NETCODE.TICK_DT);
     }
 
     this.lastReplayCountValue = this.inputs.length;
 
-    const rawCorrectionX = previousPredictedX - this.ship.x;
-    const rawCorrectionY = previousPredictedY - this.ship.y;
-    const rawCorrectionZ = previousPredictedZ - this.ship.z;
+    const dx = prePredictedX - this.ship.x;
+    const dy = prePredictedY - this.ship.y;
+    const dz = prePredictedZ - this.ship.z;
+    this.lastCorrectionDistanceValue = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    this.lastCorrectionDistanceValue = Math.sqrt(
-      rawCorrectionX * rawCorrectionX +
-        rawCorrectionY * rawCorrectionY +
-        rawCorrectionZ * rawCorrectionZ,
-    );
+    const t = this.interpAlpha;
+    const newLerpX = lerp(this.previousShip.x, this.ship.x, t);
+    const newLerpY = lerp(this.previousShip.y, this.ship.y, t);
+    const newLerpZ = lerp(this.previousShip.z, this.ship.z, t);
+    const newLerpHeading = lerpAngle(this.previousShip.heading, this.ship.heading, t);
+    const newLerpPitch = lerpAngle(this.previousShip.pitch, this.ship.pitch, t);
+    const newLerpBank = lerpAngle(this.previousShip.bank, this.ship.bank, t);
 
-    // Preserve the current rendered pose exactly, then ease it toward the newly
-    // reconciled predicted ship. This prevents snapshot arrival from producing
-    // an immediate visible pop.
-    this.correctionX = previousRenderX - this.ship.x;
-    this.correctionY = previousRenderY - this.ship.y;
-    this.correctionZ = previousRenderZ - this.ship.z;
-    this.correctionHeading = angleDelta(
-      this.ship.heading,
-      previousRenderHeading,
-    );
-    this.correctionPitch = angleDelta(this.ship.pitch, previousRenderPitch);
-    this.correctionBank = angleDelta(this.ship.bank, previousRenderBank);
+    this.correctionX = prevRenderX - newLerpX;
+    this.correctionY = prevRenderY - newLerpY;
+    this.correctionZ = prevRenderZ - newLerpZ;
+    this.correctionHeading = angleDelta(newLerpHeading, prevRenderHeading);
+    this.correctionPitch = angleDelta(newLerpPitch, prevRenderPitch);
+    this.correctionBank = angleDelta(newLerpBank, prevRenderBank);
 
     this.lastVisualCorrectionDistanceValue = Math.sqrt(
       this.correctionX * this.correctionX +
@@ -187,73 +197,29 @@ export class Prediction {
     );
   }
 
-  update(dt: number, renderLeadTime: number = 0): void {
+  update(dt: number, leadTime: number = 0): void {
     if (!this.gotInitialSnapshot) return;
 
-    const correctionAlpha =
-      1 - Math.exp(-NETCODE.PREDICTION_CORRECTION_DECAY * dt);
+    const correctionDecay = 1 - Math.exp(-NETCODE.PREDICTION_CORRECTION_DECAY * dt);
+    this.correctionX *= 1 - correctionDecay;
+    this.correctionY *= 1 - correctionDecay;
+    this.correctionZ *= 1 - correctionDecay;
+    this.correctionHeading *= 1 - correctionDecay;
+    this.correctionPitch *= 1 - correctionDecay;
+    this.correctionBank *= 1 - correctionDecay;
 
-    this.correctionX += (0 - this.correctionX) * correctionAlpha;
-    this.correctionY += (0 - this.correctionY) * correctionAlpha;
-    this.correctionZ += (0 - this.correctionZ) * correctionAlpha;
-    this.correctionHeading += (0 - this.correctionHeading) * correctionAlpha;
-    this.correctionPitch += (0 - this.correctionPitch) * correctionAlpha;
-    this.correctionBank += (0 - this.correctionBank) * correctionAlpha;
+    const t = clamp(leadTime / NETCODE.TICK_DT, 0, 1);
+    this.interpAlpha = t;
 
-    const leadTime = clamp(renderLeadTime, 0, NETCODE.TICK_DT);
-    const baseShip = leadTime > 0 ? this.renderShip : this.ship;
-
-    if (leadTime > 0) {
-      this.renderShip.applySnapshot(this.ship.toSnapshot());
-      stepShip(this.renderShip, this.lastInput, leadTime);
-      applyBoundary(this.renderShip, leadTime);
-    }
-
-    this.smoothX = baseShip.x + this.correctionX;
-    this.smoothY = baseShip.y + this.correctionY;
-    this.smoothZ = baseShip.z + this.correctionZ;
-    this.smoothHeading = baseShip.heading + this.correctionHeading;
-    this.smoothPitch = baseShip.pitch + this.correctionPitch;
-    this.smoothBank = baseShip.bank + this.correctionBank;
-  }
-
-  private stepPredictedShip(input: ShipInput): void {
-    this.lastInput = input;
-    stepShip(this.ship, input, NETCODE.TICK_DT);
-    applyBoundary(this.ship, NETCODE.TICK_DT);
-  }
-
-  private seedRenderPose(): void {
-    this.smoothX = this.ship.x;
-    this.smoothY = this.ship.y;
-    this.smoothZ = this.ship.z;
-    this.smoothHeading = this.ship.heading;
-    this.smoothPitch = this.ship.pitch;
-    this.smoothBank = this.ship.bank;
-  }
-
-  get renderX(): number {
-    return this.smoothX;
-  }
-
-  get renderY(): number {
-    return this.smoothY;
-  }
-
-  get renderZ(): number {
-    return this.smoothZ;
-  }
-
-  get renderHeading(): number {
-    return this.smoothHeading;
-  }
-
-  get renderPitch(): number {
-    return this.smoothPitch;
-  }
-
-  get renderBank(): number {
-    return this.smoothBank;
+    this.lastRenderX = lerp(this.previousShip.x, this.ship.x, t) + this.correctionX;
+    this.lastRenderY = lerp(this.previousShip.y, this.ship.y, t) + this.correctionY;
+    this.lastRenderZ = lerp(this.previousShip.z, this.ship.z, t) + this.correctionZ;
+    this.lastRenderHeading =
+      lerpAngle(this.previousShip.heading, this.ship.heading, t) + this.correctionHeading;
+    this.lastRenderPitch =
+      lerpAngle(this.previousShip.pitch, this.ship.pitch, t) + this.correctionPitch;
+    this.lastRenderBank =
+      lerpAngle(this.previousShip.bank, this.ship.bank, t) + this.correctionBank;
   }
 }
 
@@ -265,6 +231,35 @@ function sanitizeInput(input: ShipInput): ShipInput {
     pitch: clampSym(input.pitch),
     boost: !!input.boost,
   };
+}
+
+function copyShipState(src: Ship, dst: Ship): void {
+  dst.applySnapshot(src.toSnapshot());
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function lerpAngle(a: number, b: number, t: number): number {
+  let d = b - a;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return a + d * t;
+}
+
+function angleDelta(from: number, to: number): number {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function clamp(v: number, min: number, max: number): number {
+  if (!Number.isFinite(v)) return min;
+  if (v < min) return min;
+  if (v > max) return max;
+  return v;
 }
 
 function clamp01(v: number): number {
@@ -279,28 +274,4 @@ function clampSym(v: number): number {
   if (v < -1) return -1;
   if (v > 1) return 1;
   return v;
-}
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  if (v < min) return min;
-  if (v > max) return max;
-  return v;
-}
-
-function zeroInput(): ShipInput {
-  return {
-    thrust: 0,
-    brake: 0,
-    strafe: 0,
-    pitch: 0,
-    boost: false,
-  };
-}
-
-function angleDelta(from: number, to: number): number {
-  let d = to - from;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
 }
