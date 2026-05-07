@@ -10,10 +10,7 @@ import {
   Points,
   BackSide,
 } from 'three';
-
-const STAR_COUNT = 500;
-const DOME_RADIUS = 15000;
-const DOME_DETAIL = 1;
+import { VIEW } from '@stargazing/shared';
 
 export class StarfieldView {
   private scene: Scene;
@@ -29,16 +26,20 @@ export class StarfieldView {
   }
 
   private createDome(): Mesh {
-    const geometry = new IcosahedronGeometry(DOME_RADIUS, DOME_DETAIL);
+    const geometry = new IcosahedronGeometry(
+      VIEW.STARFIELD.DOME_RADIUS,
+      VIEW.STARFIELD.DOME_DETAIL,
+    );
     const count = geometry.attributes.position.count;
     const colors = new Float32Array(count * 3);
-    const bottomColor = new Color(0x000000);
-    const topColor = new Color(0x111111);
+    const bottomColor = new Color(VIEW.STARFIELD.DOME_BOTTOM_COLOR);
+    const topColor = new Color(VIEW.STARFIELD.DOME_TOP_COLOR);
     const vertexColor = new Color();
 
     for (let i = 0; i < count; i++) {
       const y = geometry.attributes.position.getY(i);
-      const t = (y + DOME_RADIUS) / (DOME_RADIUS * 2);
+      const t =
+        (y + VIEW.STARFIELD.DOME_RADIUS) / (VIEW.STARFIELD.DOME_RADIUS * 2);
       vertexColor.copy(bottomColor);
       vertexColor.lerp(topColor, t);
       colors[i * 3] = vertexColor.r;
@@ -58,11 +59,11 @@ export class StarfieldView {
   }
 
   private createStars(): Points {
-    const r = DOME_RADIUS * 0.9;
-    const positions = new Float32Array(STAR_COUNT * 3);
+    const r = VIEW.STARFIELD.DOME_RADIUS * VIEW.STARFIELD.STAR_RADIUS_FACTOR;
+    const positions = new Float32Array(VIEW.STARFIELD.STAR_COUNT * 3);
 
     let i = 0;
-    while (i < STAR_COUNT) {
+    while (i < VIEW.STARFIELD.STAR_COUNT) {
       const x = (Math.random() * 2 - 1) * r;
       const y = (Math.random() * 2 - 1) * r;
       const z = (Math.random() * 2 - 1) * r;
@@ -77,8 +78,8 @@ export class StarfieldView {
     geometry.setAttribute('position', new BufferAttribute(positions, 3));
 
     const material = new PointsMaterial({
-      color: 0xffffff,
-      size: 1.5,
+      color: VIEW.STARFIELD.STAR_COLOR,
+      size: VIEW.STARFIELD.STAR_SIZE,
       sizeAttenuation: true,
       fog: false,
     });

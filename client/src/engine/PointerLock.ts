@@ -1,4 +1,4 @@
-const ABS_DECAY = 0.85;
+import { VIEW } from "@stargazing/shared";
 
 export class PointerLock {
   private dx: number = 0;
@@ -46,8 +46,22 @@ export class PointerLock {
     if (!this.locked) return;
     this.dx += e.movementX;
     this.dy += e.movementY;
-    this.absX = Math.min(1, Math.max(-1, this.absX + e.movementX / (window.innerWidth * 0.5)));
-    this.absY = Math.min(1, Math.max(-1, this.absY + e.movementY / (window.innerHeight * 0.5)));
+    this.absX = Math.min(
+      1,
+      Math.max(
+        -1,
+        this.absX +
+          e.movementX / (window.innerWidth * VIEW.POINTER.MOUSE_NORMALIZE_SCALE),
+      ),
+    );
+    this.absY = Math.min(
+      1,
+      Math.max(
+        -1,
+        this.absY +
+          e.movementY / (window.innerHeight * VIEW.POINTER.MOUSE_NORMALIZE_SCALE),
+      ),
+    );
   };
 
   consumeDelta(): { dx: number; dy: number } {
@@ -58,7 +72,10 @@ export class PointerLock {
   }
 
   getMousePosition(deltaTime: number): { x: number; y: number } {
-    const decay = Math.pow(ABS_DECAY, deltaTime * 60);
+    const decay = Math.pow(
+      VIEW.POINTER.ABS_DECAY,
+      deltaTime * VIEW.POINTER.DECAY_FPS_REFERENCE,
+    );
     this.absX *= decay;
     this.absY *= decay;
     return { x: this.absX, y: this.absY };

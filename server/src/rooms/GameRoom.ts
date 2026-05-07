@@ -3,16 +3,12 @@ import type { ClientMessage, ServerMessage } from "@stargazing/shared";
 import type { DurableObjectState } from "@cloudflare/workers-types";
 import type { Env } from "../types.js";
 import { Simulation, TICK_DT } from "../sim/Simulation.js";
+import { NETCODE } from "@stargazing/shared";
 
 interface PlayerConnection {
   id: string;
   socket: WebSocket;
 }
-
-const SNAPSHOT_RATE_HZ = 20;
-const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE_HZ;
-const LOOP_RATE_HZ = 60;
-const LOOP_INTERVAL_MS = 1000 / LOOP_RATE_HZ;
 
 export class GameRoom {
   private state: DurableObjectState;
@@ -146,8 +142,8 @@ export class GameRoom {
 
       this.lastFrameTime = now;
 
-      if (dt > 0.25) {
-        dt = 0.25;
+      if (dt > NETCODE.SERVER_MAX_FRAME_DT) {
+        dt = NETCODE.SERVER_MAX_FRAME_DT;
       }
 
       this.tickAccumulator += dt;
@@ -158,12 +154,12 @@ export class GameRoom {
         this.tickAccumulator -= TICK_DT;
       }
 
-      if (this.snapshotAccumulator >= SNAPSHOT_INTERVAL) {
-        this.snapshotAccumulator %= SNAPSHOT_INTERVAL;
+      if (this.snapshotAccumulator >= NETCODE.SNAPSHOT_INTERVAL) {
+        this.snapshotAccumulator %= NETCODE.SNAPSHOT_INTERVAL;
         this.broadcastSnapshot();
       }
 
-      setTimeout(frame, LOOP_INTERVAL_MS);
+      setTimeout(frame, NETCODE.ROOM_LOOP_INTERVAL_MS);
     };
 
     frame();

@@ -1,15 +1,13 @@
 import {
   GameState,
+  NETCODE,
   stepShip,
   applyBoundary,
   type ShipInput,
   type ShipSnapshotWire,
 } from "@stargazing/shared";
 
-const TICK_RATE_HZ = 30;
-const MAX_QUEUED_INPUTS = 240;
-
-export const TICK_DT = 1 / TICK_RATE_HZ;
+export const TICK_DT = NETCODE.TICK_DT;
 
 interface QueuedInput {
   tick: number;
@@ -72,8 +70,8 @@ export class Simulation {
 
     queue.splice(insertAt, 0, { tick, input: sanitized });
 
-    if (queue.length > MAX_QUEUED_INPUTS) {
-      queue.splice(0, queue.length - MAX_QUEUED_INPUTS);
+    if (queue.length > NETCODE.MAX_QUEUED_INPUTS) {
+      queue.splice(0, queue.length - NETCODE.MAX_QUEUED_INPUTS);
     }
   }
 

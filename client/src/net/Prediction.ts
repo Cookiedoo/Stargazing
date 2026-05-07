@@ -7,11 +7,8 @@ import {
   type ShipSnapshotWire,
 } from "@stargazing/shared";
 
-const MAX_BUFFERED_INPUTS = 240;
-
 // Slower visual correction keeps the active camera from twitching every snapshot.
 // Logical prediction is still corrected immediately; only reconciliation is eased.
-const CORRECTION_DECAY = 3.5;
 
 interface BufferedInput {
   tick: number;
@@ -108,8 +105,8 @@ export class Prediction {
 
     this.inputs.push({ tick: clientTick, input: sanitized });
 
-    if (this.inputs.length > MAX_BUFFERED_INPUTS) {
-      this.inputs.splice(0, this.inputs.length - MAX_BUFFERED_INPUTS);
+    if (this.inputs.length > NETCODE.MAX_BUFFERED_INPUTS) {
+      this.inputs.splice(0, this.inputs.length - NETCODE.MAX_BUFFERED_INPUTS);
     }
   }
 
@@ -193,7 +190,8 @@ export class Prediction {
   update(dt: number, renderLeadTime: number = 0): void {
     if (!this.gotInitialSnapshot) return;
 
-    const correctionAlpha = 1 - Math.exp(-CORRECTION_DECAY * dt);
+    const correctionAlpha =
+      1 - Math.exp(-NETCODE.PREDICTION_CORRECTION_DECAY * dt);
 
     this.correctionX += (0 - this.correctionX) * correctionAlpha;
     this.correctionY += (0 - this.correctionY) * correctionAlpha;

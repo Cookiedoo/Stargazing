@@ -17,13 +17,8 @@ import {
   AdditiveBlending,
 } from "three";
 import { assets } from "../engine/assetLoader.js";
-import { SHIP } from "@stargazing/shared";
+import { SHIP, VIEW } from "@stargazing/shared";
 import { DEBUG } from "@stargazing/shared";
-
-const EXHAUST_PALETTE = [
-  0x2b0000, 0x5a0000, 0x8b0000, 0xb30000, 0xcc0000, 0xff0000, 0xff3300,
-  0xff6600, 0xff9900, 0xffcc00, 0xffff00,
-];
 
 interface Particle {
   position: Vector3;
@@ -52,16 +47,16 @@ export class ShipView {
   private _quat: Quaternion = new Quaternion();
   private _euler: Euler = new Euler();
 
-  constructor(scene: Scene, color: number = 0x6080ff) {
+  constructor(scene: Scene, color: number = VIEW.DEFAULT_SHIP_COLOR) {
     this.scene = scene;
     this.color = color;
 
     this.root = new Group();
     this.orientGroup = new Group();
-    this.orientGroup.rotation.x = -Math.PI / 2;
-    this.orientGroup.rotation.y = Math.PI;
+    this.orientGroup.rotation.x = VIEW.SHIP_VIEW.ORIENT_ROTATION_X;
+    this.orientGroup.rotation.y = VIEW.SHIP_VIEW.ORIENT_ROTATION_Y;
     this.root.add(this.orientGroup);
-    this.root.scale.setScalar(3);
+    this.root.scale.setScalar(VIEW.SHIP_VIEW.MODEL_SCALE);
     this.scene.add(this.root);
 
     this.loadModel();
@@ -89,10 +84,12 @@ export class ShipView {
         cloned.color = c.clone();
         if (DEBUG.PLAYER_GLOW) {
           cloned.emissive = c.clone();
-          cloned.emissiveIntensity = 0.75;
+          cloned.emissiveIntensity = VIEW.SHIP_VIEW.GLOW_EMISSIVE_INTENSITY;
         } else {
-          cloned.emissive = c.clone().multiplyScalar(0.15);
-          cloned.emissiveIntensity = 1;
+          cloned.emissive = c
+            .clone()
+            .multiplyScalar(VIEW.SHIP_VIEW.NORMAL_EMISSIVE_SCALE);
+          cloned.emissiveIntensity = VIEW.SHIP_VIEW.NORMAL_EMISSIVE_INTENSITY;
         }
         obj.material = cloned;
       }
@@ -101,15 +98,24 @@ export class ShipView {
 
   private initExhaust(): void {
     const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 64;
+    canvas.width = canvas.height = VIEW.SHIP_VIEW.EXHAUST_CANVAS_SIZE;
     const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, 64, 64);
+    ctx.clearRect(
+      0,
+      0,
+      VIEW.SHIP_VIEW.EXHAUST_CANVAS_SIZE,
+      VIEW.SHIP_VIEW.EXHAUST_CANVAS_SIZE,
+    );
     ctx.fillStyle = "rgba(255,180,80,1)";
     ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2;
-      const x = 32 + Math.cos(angle) * 20;
-      const y = 32 + Math.sin(angle) * 20;
+    for (let i = 0; i < VIEW.SHIP_VIEW.EXHAUST_STAR_POINTS; i++) {
+      const angle = (i / VIEW.SHIP_VIEW.EXHAUST_STAR_POINTS) * Math.PI * 2;
+      const x =
+        VIEW.SHIP_VIEW.EXHAUST_CANVAS_CENTER +
+        Math.cos(angle) * VIEW.SHIP_VIEW.EXHAUST_CANVAS_RADIUS;
+      const y =
+        VIEW.SHIP_VIEW.EXHAUST_CANVAS_CENTER +
+        Math.sin(angle) * VIEW.SHIP_VIEW.EXHAUST_CANVAS_RADIUS;
       i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.closePath();
@@ -119,19 +125,27 @@ export class ShipView {
     tex.magFilter = NearestFilter;
     tex.minFilter = NearestFilter;
 
-    const positions = new Float32Array(SHIP.EXHAUST_MAX * 3).fill(99999);
+    const positions = new Float32Array(SHIP.EXHAUST_MAX * 3).fill(
+      VIEW.SHIP_VIEW.EXHAUST_HIDDEN_POSITION,
+    );
     const colors = new Float32Array(SHIP.EXHAUST_MAX * 3);
 
     for (let i = 0; i < SHIP.EXHAUST_MAX; i++) {
       const c = new Color(
-        EXHAUST_PALETTE[Math.floor(Math.random() * EXHAUST_PALETTE.length)],
+        VIEW.SHIP_VIEW.EXHAUST_PALETTE[
+          Math.floor(Math.random() * VIEW.SHIP_VIEW.EXHAUST_PALETTE.length)
+        ],
       );
       colors[i * 3] = c.r;
       colors[i * 3 + 1] = c.g;
       colors[i * 3 + 2] = c.b;
 
       this.particles.push({
-        position: new Vector3(99999, 99999, 99999),
+        position: new Vector3(
+          VIEW.SHIP_VIEW.EXHAUST_HIDDEN_POSITION,
+          VIEW.SHIP_VIEW.EXHAUST_HIDDEN_POSITION,
+          VIEW.SHIP_VIEW.EXHAUST_HIDDEN_POSITION,
+        ),
         velocity: new Vector3(),
         life: 0,
         maxLife: 0,
@@ -144,12 +158,12 @@ export class ShipView {
 
     const mat = new PointsMaterial({
       color: 0xffffff,
-      size: 8,
+      size: VIEW.SHIP_VIEW.EXHAUST_POINT_SIZE,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.5,
+      opacity: VIEW.SHIP_VIEW.EXHAUST_BASE_OPACITY,
       map: tex,
-      alphaTest: 0.01,
+      alphaTest: VIEW.SHIP_VIEW.EXHAUST_ALPHA_TEST,
       depthWrite: false,
       fog: false,
       vertexColors: true,
@@ -158,7 +172,10 @@ export class ShipView {
 
     this.exhaust = new Points(geo, mat);
     this.exhaust.frustumCulled = false;
-    this.exhaust.geometry.boundingSphere = new Sphere(new Vector3(), 999999);
+    this.exhaust.geometry.boundingSphere = new Sphere(
+      new Vector3(),
+      VIEW.SHIP_VIEW.EXHAUST_HIDDEN_POSITION,
+    );
     this.scene.add(this.exhaust);
   }
 

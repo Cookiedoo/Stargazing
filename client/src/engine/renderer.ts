@@ -9,6 +9,7 @@ import {
   ACESFilmicToneMapping,
 } from "three";
 import type { PlatformInfo } from "./platform.js";
+import { VIEW } from "@stargazing/shared";
 
 export class Renderer {
   readonly scene: Scene;
@@ -22,12 +23,20 @@ export class Renderer {
     this.container = container;
 
     this.scene = new Scene();
-    this.scene.background = new Color(0x05070d);
-    this.scene.fog = new FogExp2(0x05070d, 0.0008);
+    this.scene.background = new Color(VIEW.RENDERER.BACKGROUND_COLOR);
+    this.scene.fog = new FogExp2(
+      VIEW.RENDERER.BACKGROUND_COLOR,
+      VIEW.RENDERER.FOG_DENSITY,
+    );
 
-    this.camera = new PerspectiveCamera(60, 1, 0.1, 8000);
-    this.camera.position.set(0, 8, 25);
-    this.camera.lookAt(0, 0, 0);
+    this.camera = new PerspectiveCamera(
+      VIEW.RENDERER.CAMERA_FOV,
+      1,
+      VIEW.RENDERER.CAMERA_NEAR,
+      VIEW.RENDERER.CAMERA_FAR,
+    );
+    this.camera.position.set(...VIEW.RENDERER.CAMERA_POSITION);
+    this.camera.lookAt(...VIEW.RENDERER.CAMERA_LOOK_AT);
 
     this.gl = new WebGLRenderer({
       antialias: platform.gpuTier !== "low",
@@ -35,7 +44,7 @@ export class Renderer {
     });
     this.gl.setPixelRatio(platform.pixelRatio);
     this.gl.toneMapping = ACESFilmicToneMapping;
-    this.gl.toneMappingExposure = 1.0;
+    this.gl.toneMappingExposure = VIEW.RENDERER.TONE_MAPPING_EXPOSURE;
 
     container.appendChild(this.gl.domElement);
     Object.assign(this.gl.domElement.style, {
@@ -47,15 +56,24 @@ export class Renderer {
       display: "block",
     });
 
-    const ambient = new AmbientLight(0x404860, 0.6);
+    const ambient = new AmbientLight(
+      VIEW.RENDERER.AMBIENT_COLOR,
+      VIEW.RENDERER.AMBIENT_INTENSITY,
+    );
     this.scene.add(ambient);
 
-    const keyLight = new DirectionalLight(0xfff4e0, 1.2); // warm sun
-    keyLight.position.set(5, 10, 7);
+    const keyLight = new DirectionalLight(
+      VIEW.RENDERER.KEY_LIGHT_COLOR,
+      VIEW.RENDERER.KEY_LIGHT_INTENSITY,
+    );
+    keyLight.position.set(...VIEW.RENDERER.KEY_LIGHT_POSITION);
     this.scene.add(keyLight);
 
-    const rimLight = new DirectionalLight(0x6080ff, 0.4); // cool rim
-    rimLight.position.set(-8, 4, -6);
+    const rimLight = new DirectionalLight(
+      VIEW.RENDERER.RIM_LIGHT_COLOR,
+      VIEW.RENDERER.RIM_LIGHT_INTENSITY,
+    );
+    rimLight.position.set(...VIEW.RENDERER.RIM_LIGHT_POSITION);
     this.scene.add(rimLight);
 
     this.resizeObserver = new ResizeObserver(() => this.handleResize());

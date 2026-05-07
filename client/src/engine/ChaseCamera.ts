@@ -1,4 +1,5 @@
 import { Euler, PerspectiveCamera, Quaternion, Vector3 } from "three";
+import { VIEW } from "@stargazing/shared";
 
 export interface ChaseTarget {
   x: number;
@@ -11,12 +12,12 @@ export interface ChaseTarget {
 export class ChaseCamera {
   private camera: PerspectiveCamera;
 
-  private offset: Vector3 = new Vector3(0, 20, 50);
-  private lookAtOffset: Vector3 = new Vector3(0, 8, 0);
+  private offset: Vector3 = new Vector3(...VIEW.CAMERA.OFFSET);
+  private lookAtOffset: Vector3 = new Vector3(...VIEW.CAMERA.LOOK_AT_OFFSET);
 
-  private positionSharpness = 10;
-  private lookAtSharpness = 14;
-  private targetSharpness = 18;
+  private positionSharpness = VIEW.CAMERA.POSITION_SHARPNESS;
+  private lookAtSharpness = VIEW.CAMERA.LOOK_AT_SHARPNESS;
+  private targetSharpness = VIEW.CAMERA.TARGET_SHARPNESS;
 
   private initialized = false;
 
@@ -44,12 +45,12 @@ export class ChaseCamera {
   }
 
   setSmoothing(positionSharpness: number, lookAtSharpness: number): void {
-    this.positionSharpness = Math.max(0.01, positionSharpness);
-    this.lookAtSharpness = Math.max(0.01, lookAtSharpness);
+    this.positionSharpness = Math.max(VIEW.CAMERA.MIN_SHARPNESS, positionSharpness);
+    this.lookAtSharpness = Math.max(VIEW.CAMERA.MIN_SHARPNESS, lookAtSharpness);
   }
 
   setTargetSmoothing(targetSharpness: number): void {
-    this.targetSharpness = Math.max(0.01, targetSharpness);
+    this.targetSharpness = Math.max(VIEW.CAMERA.MIN_SHARPNESS, targetSharpness);
   }
 
   reset(): void {

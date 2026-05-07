@@ -1,9 +1,6 @@
 import type { ShipSnapshotWire } from "@stargazing/shared";
 import { NETCODE } from "@stargazing/shared/tuning";
 
-const INTERP_DELAY_MS = NETCODE.INTERPOLATION_DELAY_MS;
-const MAX_BUFFER_MS = 2000;
-
 interface TimedSnapshot {
   timeMs: number;
   snap: ShipSnapshotWire;
@@ -29,7 +26,7 @@ export class Interpolation {
 
     this.buffer.push({ timeMs, snap });
 
-    const cutoff = timeMs - MAX_BUFFER_MS;
+    const cutoff = timeMs - NETCODE.INTERPOLATION_MAX_BUFFER_MS;
     while (this.buffer.length && this.buffer[0].timeMs < cutoff) {
       this.buffer.shift();
     }
@@ -44,7 +41,7 @@ export class Interpolation {
 
     if (this.buffer.length === 0) return null;
 
-    const renderTimeMs = nowMs - INTERP_DELAY_MS;
+    const renderTimeMs = nowMs - NETCODE.INTERPOLATION_DELAY_MS;
     const first = this.buffer[0];
     const last = this.buffer[this.buffer.length - 1];
 

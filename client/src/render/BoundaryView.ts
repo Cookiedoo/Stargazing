@@ -9,11 +9,7 @@ import {
   BackSide,
   Vector3,
 } from 'three';
-import { MAP } from '@stargazing/shared';
-
-const GRID_SIZE = 400;
-const GRID_DIVISIONS = 80;
-const GRID_FADE_DIST = 300;
+import { MAP, VIEW } from '@stargazing/shared';
 
 const VERT = `
   varying vec2 vUv;
@@ -76,20 +72,28 @@ export class BoundaryView {
 
   constructor(scene: Scene) {
     this.scene = scene;
-    const planeGeo = new PlaneGeometry(GRID_SIZE, GRID_SIZE);
+    const planeGeo = new PlaneGeometry(
+      VIEW.BOUNDARY.GRID_SIZE,
+      VIEW.BOUNDARY.GRID_SIZE,
+    );
 
     this.gridBottom = new Mesh(planeGeo, this.makePlaneMat());
     this.gridBottom.rotation.x = -Math.PI / 2;
-    this.gridBottom.position.y = MAP.Y_MIN - 50;
+    this.gridBottom.position.y = MAP.Y_MIN - VIEW.BOUNDARY.GRID_VERTICAL_OFFSET;
     this.scene.add(this.gridBottom);
 
     this.gridTop = new Mesh(planeGeo, this.makePlaneMat());
     this.gridTop.rotation.x = -Math.PI / 2;
-    this.gridTop.position.y = MAP.Y_MAX + 50;
+    this.gridTop.position.y = MAP.Y_MAX + VIEW.BOUNDARY.GRID_VERTICAL_OFFSET;
     this.scene.add(this.gridTop);
 
     const cylGeo = new CylinderGeometry(
-      MAP.BOUNDARY_RADIUS, MAP.BOUNDARY_RADIUS, 2200, 64, 1, true,
+      MAP.BOUNDARY_RADIUS,
+      MAP.BOUNDARY_RADIUS,
+      VIEW.BOUNDARY.CYLINDER_HEIGHT,
+      VIEW.BOUNDARY.CYLINDER_SEGMENTS,
+      VIEW.BOUNDARY.CYLINDER_HEIGHT_SEGMENTS,
+      true,
     );
     this.wallCyl = new Mesh(cylGeo, this.makeCylMat());
     this.scene.add(this.wallCyl);
@@ -100,8 +104,8 @@ export class BoundaryView {
       vertexShader: VERT,
       fragmentShader: FRAG_PLANE,
       uniforms: {
-        uDivisions: { value: GRID_DIVISIONS },
-        uColor: { value: new Color(0xff2200) },
+        uDivisions: { value: VIEW.BOUNDARY.GRID_DIVISIONS },
+        uColor: { value: new Color(VIEW.BOUNDARY.COLOR) },
         uTime: { value: 0 },
         uFade: { value: 1.0 },
       },
@@ -116,8 +120,8 @@ export class BoundaryView {
       vertexShader: VERT,
       fragmentShader: FRAG_CYL,
       uniforms: {
-        uDivisions: { value: GRID_DIVISIONS },
-        uColor: { value: new Color(0xff2200) },
+        uDivisions: { value: VIEW.BOUNDARY.GRID_DIVISIONS },
+        uColor: { value: new Color(VIEW.BOUNDARY.COLOR) },
         uTime: { value: 0 },
         uFade: { value: 0.0 },
       },
@@ -130,7 +134,7 @@ export class BoundaryView {
   update(dt: number, shipPos: Vector3): void {
     this.elapsed += dt;
 
-    const cellSize = GRID_SIZE / GRID_DIVISIONS;
+    const cellSize = VIEW.BOUNDARY.GRID_SIZE / VIEW.BOUNDARY.GRID_DIVISIONS;
     const sx = Math.round(shipPos.x / cellSize) * cellSize;
     const sz = Math.round(shipPos.z / cellSize) * cellSize;
     const sy = Math.round(shipPos.y / cellSize) * cellSize;
@@ -146,11 +150,11 @@ export class BoundaryView {
       Math.sqrt(shipPos.x * shipPos.x + shipPos.z * shipPos.z);
 
     (this.gridBottom.material as ShaderMaterial).uniforms.uFade.value =
-      Math.max(0, 1 - distToBottom / GRID_FADE_DIST);
+      Math.max(0, 1 - distToBottom / VIEW.BOUNDARY.GRID_FADE_DIST);
     (this.gridTop.material as ShaderMaterial).uniforms.uFade.value =
-      Math.max(0, 1 - distToTop / GRID_FADE_DIST);
+      Math.max(0, 1 - distToTop / VIEW.BOUNDARY.GRID_FADE_DIST);
     (this.wallCyl.material as ShaderMaterial).uniforms.uFade.value =
-      Math.max(0, 1 - distFromEdge / GRID_FADE_DIST);
+      Math.max(0, 1 - distFromEdge / VIEW.BOUNDARY.GRID_FADE_DIST);
 
     (this.gridBottom.material as ShaderMaterial).uniforms.uTime.value = this.elapsed;
     (this.gridTop.material as ShaderMaterial).uniforms.uTime.value = this.elapsed;
